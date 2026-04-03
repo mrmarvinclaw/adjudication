@@ -32,11 +32,7 @@ func ParseRecord(record string, baseDir string) (Spec, error) {
 	if _, err := xproxy.ParseXProxyModel(model); err != nil {
 		return Spec{}, fmt.Errorf("invalid persona model %q: %w", model, err)
 	}
-	filePath := fileRef
-	if !filepath.IsAbs(filePath) {
-		filePath = filepath.Join(baseDir, fileRef)
-	}
-	filePath = filepath.Clean(filePath)
+	filePath := resolvePersonaFilePath(fileRef, baseDir)
 	raw, err := os.ReadFile(filePath)
 	if err != nil {
 		return Spec{}, fmt.Errorf("read persona text %s: %w", fileRef, err)
@@ -51,6 +47,23 @@ func ParseRecord(record string, baseDir string) (Spec, error) {
 		Text:     text,
 		FilePath: filePath,
 	}, nil
+}
+
+func resolvePersonaFilePath(fileRef string, baseDir string) string {
+	if filepath.IsAbs(fileRef) {
+		return filepath.Clean(fileRef)
+	}
+	candidates := []string{
+		filepath.Join(baseDir, fileRef),
+		filepath.Join(baseDir, "..", "..", "etc", fileRef),
+	}
+	for _, candidate := range candidates {
+		candidate = filepath.Clean(candidate)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return filepath.Clean(filepath.Join(baseDir, fileRef))
 }
 
 func LoadRecordsFile(path string, baseDir string) ([]Spec, error) {

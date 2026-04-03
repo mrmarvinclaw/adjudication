@@ -92,6 +92,39 @@ func TestLoadRecordsFile(t *testing.T) {
 	}
 }
 
+func TestLoadRecordsFileResolvesSharedDataPoolPaths(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dataDir := filepath.Join(root, "common", "data", "personas")
+	etcDir := filepath.Join(root, "common", "etc", "personas")
+	if err := os.MkdirAll(dataDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll data error = %v", err)
+	}
+	if err := os.MkdirAll(etcDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll etc error = %v", err)
+	}
+	personaPath := filepath.Join(etcDir, "a.txt")
+	if err := os.WriteFile(personaPath, []byte("shared persona"), 0o644); err != nil {
+		t.Fatalf("WriteFile persona error = %v", err)
+	}
+	recordsPath := filepath.Join(dataDir, "pool.csv")
+	if err := os.WriteFile(recordsPath, []byte("openrouter://openai/gpt-5,personas/a.txt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile records error = %v", err)
+	}
+
+	specs, err := LoadRecordsFile(recordsPath, root)
+	if err != nil {
+		t.Fatalf("LoadRecordsFile error = %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("LoadRecordsFile count = %d, want 1", len(specs))
+	}
+	if specs[0].FilePath != filepath.Clean(personaPath) {
+		t.Fatalf("FilePath = %q, want %q", specs[0].FilePath, personaPath)
+	}
+}
+
 func TestSampleRecordFileSingle(t *testing.T) {
 	t.Parallel()
 

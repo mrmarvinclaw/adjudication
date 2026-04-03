@@ -95,10 +95,7 @@ func firstExistingPath(paths ...string) string {
 }
 
 func defaultPersonaRecordsPathFor(baseDir string) string {
-	return resolveDefault(
-		firstExistingPath(defaultCommonPathFrom(baseDir, "etc", "personas.csv"), filepath.Join(baseDir, "etc", "personas.csv")),
-		defaultCommonPathFrom(baseDir, "etc", "personas.csv"),
-	)
+	return defaultCommonPathFrom(baseDir, "data", "personas", "pool.csv")
 }
 
 func defaultPersonaRecordsPath() string {
@@ -106,7 +103,7 @@ func defaultPersonaRecordsPath() string {
 	if err == nil {
 		return defaultPersonaRecordsPathFor(cwd)
 	}
-	return defaultCommonPath("etc", "personas.csv")
+	return defaultCommonPath("data", "personas", "pool.csv")
 }
 
 func defaultXProxyConfigPath() string {

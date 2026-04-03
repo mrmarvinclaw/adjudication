@@ -12,17 +12,23 @@ func TestResolveLLMPersonaSpecRandom(t *testing.T) {
 	t.Parallel()
 
 	cwd := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(cwd, "etc", "personas", "persons"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(cwd, "common", "etc", "personas", "persons"), 0o755); err != nil {
+		t.Fatalf("MkdirAll persona error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(cwd, "common", "data", "personas"), 0o755); err != nil {
 		t.Fatalf("MkdirAll error = %v", err)
 	}
-	personaPath := filepath.Join(cwd, "etc", "personas", "persons", "a.txt")
+	personaPath := filepath.Join(cwd, "common", "etc", "personas", "persons", "a.txt")
 	if err := os.WriteFile(personaPath, []byte("skeptical of unsigned documents"), 0o644); err != nil {
 		t.Fatalf("WriteFile persona error = %v", err)
 	}
-	recordsPath := filepath.Join(cwd, "etc", "personas.csv")
+	recordsPath := filepath.Join(cwd, "common", "data", "personas", "pool.csv")
 	record := "openrouter://openai/gpt-5,personas/persons/a.txt\n"
 	if err := os.WriteFile(recordsPath, []byte(record), 0o644); err != nil {
 		t.Fatalf("WriteFile records error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, "common", "etc", "personas.csv"), []byte(record), 0o644); err != nil {
+		t.Fatalf("WriteFile marker records error = %v", err)
 	}
 
 	spec, sampled, err := resolveLLMPersonaSpec("random", cwd)

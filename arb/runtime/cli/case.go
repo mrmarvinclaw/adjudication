@@ -40,7 +40,7 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	evidenceStandard := fs.String("evidence-standard", "", "Override policy evidence_standard")
 	commonRoot := fs.String("common-root", defaultCommonRoot(), "Path to the sibling shared common directory")
 	legacyCommonRoot := fs.String("agentcourt-root", "", "Deprecated alias for --common-root")
-	councilPool := fs.String("council-pool", "", "Council model/persona pool file. Default: <common-root>/etc/personas.csv")
+	councilPool := fs.String("council-pool", "", "Council model/persona pool file. Default: <common-root>/data/personas/pool.csv")
 	attorneyModel := fs.String("attorney-model", runner.DefaultAttorneyModel, "Attorney ACP model id. Use an explicit xproxy model such as openai://gpt-5 or openai://gpt-5?tools=search")
 	acpCommand := fs.String("acp-command", "", "ACP command. Default: <common-root>/pi-container/acp-podman.sh")
 	xproxyConfig := fs.String("xproxy-config", "", "xproxy config path. Default: <common-root>/etc/xproxy.json")
@@ -115,7 +115,7 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 	councilPoolPath := strings.TrimSpace(*councilPool)
 	if councilPoolPath == "" {
-		councilPoolPath = filepath.Join(commonRootResolved, "etc", "personas.csv")
+		councilPoolPath = filepath.Join(commonRootResolved, "data", "personas", "pool.csv")
 	}
 	xproxyConfigPath := strings.TrimSpace(*xproxyConfig)
 	if xproxyConfigPath == "" {
