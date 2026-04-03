@@ -47,10 +47,18 @@ func Run(ctx context.Context, cfg Config, complaint spec.Complaint) (result Resu
 	if err != nil {
 		return Result{}, err
 	}
-	caseDir := filepath.Dir(cfg.ComplaintPath)
-	caseFiles, err := loadCaseFiles(caseDir)
-	if err != nil {
-		return Result{}, err
+	var caseFiles []CaseFile
+	if len(cfg.CaseFilePaths) != 0 {
+		caseFiles, err = loadCaseFilesFromPaths(cfg.CaseFilePaths)
+		if err != nil {
+			return Result{}, err
+		}
+	} else {
+		caseDir := filepath.Dir(cfg.ComplaintPath)
+		caseFiles, err = loadCaseFiles(caseDir)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	fileByID := make(map[string]CaseFile, len(caseFiles))
 	for _, file := range caseFiles {

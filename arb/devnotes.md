@@ -95,3 +95,19 @@ counts.  Then combine that with the strict-majority validator and the
 reachable seat bound to exclude dual-threshold states.  That is enough to show
 that `currentResolution?` commutes with the vote flip on every reachable
 state.
+
+## 2026-04-03
+
+### Explicit case-file selection for `aar case`
+
+`aar case` still defaults to loading case files from the complaint directory.
+That behavior is convenient for the examples, but it depends on a directory
+scan and a skip list.  The CLI now also accepts repeated `--file` arguments,
+including glob patterns, and passes the resolved file list into the runner.
+
+The explicit list replaces the directory scan entirely.  That keeps the old
+default while giving the caller a precise file boundary for one run.  The CLI
+expands globs, rejects unmatched glob patterns, and rejects prohibited
+extensions: `.gitignore`, `.sh`, and `.sig`.  The runner then loads exactly
+those files and fails on duplicate basenames, because the case record keys
+files by visible filename.

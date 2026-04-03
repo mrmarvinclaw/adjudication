@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,7 +20,9 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	var fs *flag.FlagSet
 	fs = flag.NewFlagSet("case", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	var caseFiles explicitFileList
 	complaintPath := fs.String("complaint", "", "Complaint markdown file")
+	fs.Var(&caseFiles, "file", "Explicit case file path or glob. May be repeated. Overrides automatic complaint-directory scanning")
 	outDir := fs.String("out-dir", "", "Output directory")
 	policyPath := fs.String("policy", "", "Policy JSON file. Default: ./etc/policy.json when present")
 	councilSize := fs.Int("council-size", 0, "Override policy council_size")
@@ -107,9 +110,14 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	if effectiveRunID == "" {
 		effectiveRunID = fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
 	}
+	explicitCaseFiles, err := resolveExplicitCaseFiles(caseFiles.values)
+	if err != nil {
+		return err
+	}
 	cfg := runner.Config{
 		RunID:            effectiveRunID,
 		ComplaintPath:    *complaintPath,
+		CaseFilePaths:    explicitCaseFiles,
 		OutputDir:        *outDir,
 		CommonRoot:       commonRootResolved,
 		CouncilPoolPath:  councilPoolPath,
@@ -125,6 +133,77 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 	_, err = fmt.Fprintln(stdout, *outDir)
 	return err
+}
+
+type explicitFileList struct {
+	values []string
+}
+
+func (f *explicitFileList) String() string {
+	return strings.Join(f.values, ",")
+}
+
+func (f *explicitFileList) Set(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fmt.Errorf("--file must not be empty")
+	}
+	f.values = append(f.values, value)
+	return nil
+}
+
+func resolveExplicitCaseFiles(patterns []string) ([]string, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(patterns))
+	seen := map[string]struct{}{}
+	for _, pattern := range patterns {
+		matches, err := expandExplicitCaseFilePattern(pattern)
+		if err != nil {
+			return nil, err
+		}
+		for _, match := range matches {
+			if err := validateExplicitCaseFilePath(match); err != nil {
+				return nil, err
+			}
+			absMatch, err := filepath.Abs(match)
+			if err != nil {
+				return nil, fmt.Errorf("resolve case file %s: %w", match, err)
+			}
+			if _, ok := seen[absMatch]; ok {
+				continue
+			}
+			seen[absMatch] = struct{}{}
+			out = append(out, absMatch)
+		}
+	}
+	return out, nil
+}
+
+func expandExplicitCaseFilePattern(pattern string) ([]string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("expand --file %q: %w", pattern, err)
+	}
+	if len(matches) != 0 {
+		slices.Sort(matches)
+		return matches, nil
+	}
+	if strings.ContainsAny(pattern, "*?[") {
+		return nil, fmt.Errorf("--file pattern %q matched no files", pattern)
+	}
+	return []string{pattern}, nil
+}
+
+func validateExplicitCaseFilePath(path string) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".gitignore", ".sh", ".sig":
+		return fmt.Errorf("explicit case file %s uses prohibited extension %q", path, ext)
+	default:
+		return nil
+	}
 }
 
 func defaultEnginePath() string {

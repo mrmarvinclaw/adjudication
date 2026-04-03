@@ -35,6 +35,7 @@ type RuntimeLimits struct {
 type Config struct {
 	RunID            string
 	ComplaintPath    string
+	CaseFilePaths    []string
 	OutputDir        string
 	CommonRoot       string
 	CouncilPoolPath  string

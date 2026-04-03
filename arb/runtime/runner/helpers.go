@@ -74,26 +74,9 @@ func loadCaseFiles(dir string) ([]CaseFile, error) {
 		if skipCaseFile(name) {
 			continue
 		}
-		path := filepath.Join(dir, name)
-		mimeType, readable := caseFileKind(name)
-		info, err := entry.Info()
+		file, err := loadCaseFile(filepath.Join(dir, name), name)
 		if err != nil {
-			return nil, fmt.Errorf("stat case file %s: %w", name, err)
-		}
-		file := CaseFile{
-			FileID:       name,
-			Name:         name,
-			Path:         path,
-			MimeType:     mimeType,
-			TextReadable: readable,
-			SizeBytes:    int(info.Size()),
-		}
-		if readable {
-			raw, err := os.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("read case file %s: %w", name, err)
-			}
-			file.Text = string(raw)
+			return nil, err
 		}
 		out = append(out, file)
 	}
@@ -104,6 +87,61 @@ func loadCaseFiles(dir string) ([]CaseFile, error) {
 		return nil, fmt.Errorf("no usable case files found in %s", dir)
 	}
 	return out, nil
+}
+
+func loadCaseFilesFromPaths(paths []string) ([]CaseFile, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no case files specified")
+	}
+	out := make([]CaseFile, 0, len(paths))
+	seen := map[string]string{}
+	for _, rawPath := range paths {
+		path := strings.TrimSpace(rawPath)
+		if path == "" {
+			return nil, fmt.Errorf("case file path must not be empty")
+		}
+		name := filepath.Base(path)
+		if prior, ok := seen[name]; ok {
+			return nil, fmt.Errorf("duplicate case file name %q from %s and %s", name, prior, path)
+		}
+		file, err := loadCaseFile(path, name)
+		if err != nil {
+			return nil, err
+		}
+		seen[name] = path
+		out = append(out, file)
+	}
+	slices.SortFunc(out, func(a, b CaseFile) int {
+		return strings.Compare(a.FileID, b.FileID)
+	})
+	return out, nil
+}
+
+func loadCaseFile(path string, name string) (CaseFile, error) {
+	mimeType, readable := caseFileKind(name)
+	info, err := os.Stat(path)
+	if err != nil {
+		return CaseFile{}, fmt.Errorf("stat case file %s: %w", name, err)
+	}
+	if info.IsDir() {
+		return CaseFile{}, fmt.Errorf("case file %s is a directory", name)
+	}
+	file := CaseFile{
+		FileID:       name,
+		Name:         name,
+		Path:         path,
+		MimeType:     mimeType,
+		TextReadable: readable,
+		SizeBytes:    int(info.Size()),
+	}
+	if readable {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return CaseFile{}, fmt.Errorf("read case file %s: %w", name, err)
+		}
+		file.Text = string(raw)
+	}
+	return file, nil
 }
 
 func caseFileKind(name string) (string, bool) {

@@ -63,6 +63,57 @@ func TestLoadCaseFilesPreservesTrailingNewline(t *testing.T) {
 	}
 }
 
+func TestLoadCaseFilesFromPaths(t *testing.T) {
+	dir := t.TempDir()
+	txtPath := filepath.Join(dir, "instructions.txt")
+	pemPath := filepath.Join(dir, "samantha_public.pem")
+	if err := os.WriteFile(txtPath, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("write instructions: %v", err)
+	}
+	if err := os.WriteFile(pemPath, []byte("pem"), 0o644); err != nil {
+		t.Fatalf("write pem: %v", err)
+	}
+
+	files, err := loadCaseFilesFromPaths([]string{pemPath, txtPath})
+	if err != nil {
+		t.Fatalf("loadCaseFilesFromPaths returned error: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("loadCaseFilesFromPaths returned %d files, want 2", len(files))
+	}
+	if files[0].FileID != "instructions.txt" || files[1].FileID != "samantha_public.pem" {
+		t.Fatalf("unexpected files: %#v", files)
+	}
+	if files[0].Text != "hello\n" {
+		t.Fatalf("instructions text = %q, want hello\\n", files[0].Text)
+	}
+}
+
+func TestLoadCaseFilesFromPathsRejectsDuplicateBaseNames(t *testing.T) {
+	dir := t.TempDir()
+	left := filepath.Join(dir, "a")
+	right := filepath.Join(dir, "b")
+	if err := os.MkdirAll(left, 0o755); err != nil {
+		t.Fatalf("mkdir left: %v", err)
+	}
+	if err := os.MkdirAll(right, 0o755); err != nil {
+		t.Fatalf("mkdir right: %v", err)
+	}
+	leftPath := filepath.Join(left, "shared.txt")
+	rightPath := filepath.Join(right, "shared.txt")
+	if err := os.WriteFile(leftPath, []byte("left"), 0o644); err != nil {
+		t.Fatalf("write left: %v", err)
+	}
+	if err := os.WriteFile(rightPath, []byte("right"), 0o644); err != nil {
+		t.Fatalf("write right: %v", err)
+	}
+
+	_, err := loadCaseFilesFromPaths([]string{leftPath, rightPath})
+	if err == nil || !strings.Contains(err.Error(), "duplicate case file name") {
+		t.Fatalf("loadCaseFilesFromPaths error = %v, want duplicate name error", err)
+	}
+}
+
 func TestValidateAttorneyPayload(t *testing.T) {
 	policy := DefaultPolicy()
 	fileByID := map[string]CaseFile{
