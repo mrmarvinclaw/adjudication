@@ -9,15 +9,15 @@ import (
 	"strings"
 )
 
-func usesPIContainerWrapper(command string) bool {
+func UsesPIContainerWrapper(command string) bool {
 	base := strings.TrimSpace(filepath.Base(command))
 	return base == "acp-podman.sh" || base == "pi-podman.sh"
 }
 
-func prepareEphemeralPIHome(repoRoot string) (string, func() error, error) {
-	repoRoot = strings.TrimSpace(repoRoot)
-	if repoRoot == "" {
-		return "", nil, fmt.Errorf("repo root is required")
+func PrepareEphemeralPIHome(commonRoot string) (string, func() error, error) {
+	commonRoot = strings.TrimSpace(commonRoot)
+	if commonRoot == "" {
+		return "", nil, fmt.Errorf("common root is required")
 	}
 	homeDir, err := os.MkdirTemp("", "agentcourt-pi-home-")
 	if err != nil {
@@ -43,11 +43,11 @@ func prepareEphemeralPIHome(repoRoot string) (string, func() error, error) {
 		dst string
 	}{
 		{
-			src: filepath.Join(repoRoot, "etc", "pi-settings.xproxy.json"),
+			src: filepath.Join(commonRoot, "etc", "pi-settings.xproxy.json"),
 			dst: filepath.Join(agentDir, "settings.json"),
 		},
 		{
-			src: filepath.Join(repoRoot, "etc", "pi-models.xproxy.json"),
+			src: filepath.Join(commonRoot, "etc", "pi-models.xproxy.json"),
 			dst: filepath.Join(agentDir, "models.json"),
 		},
 	} {
@@ -76,6 +76,14 @@ func prepareEphemeralPIHome(repoRoot string) (string, func() error, error) {
 		return fail(fmt.Errorf("write %s: %w", authPath, err))
 	}
 	return homeDir, cleanup, nil
+}
+
+func usesPIContainerWrapper(command string) bool {
+	return UsesPIContainerWrapper(command)
+}
+
+func prepareEphemeralPIHome(commonRoot string) (string, func() error, error) {
+	return PrepareEphemeralPIHome(commonRoot)
 }
 
 func overridePISettingsDefaultModelForRunner(raw []byte, flashModel string) ([]byte, error) {

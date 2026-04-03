@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"adjudication/adc/runtime/runner"
 	"adjudication/common/acp"
 )
 
@@ -76,13 +78,9 @@ func RunACP(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return err
 	}
-	repoCwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("get cwd: %w", err)
-	}
 	commandValue := strings.TrimSpace(*command)
 	argValues := []string(argList)
-	defaultACPServer := filepath.Join(repoCwd, defaultACPServerPath())
+	defaultACPServer := defaultACPServerPath()
 	if commandValue == "" {
 		if !fileExists(defaultACPServer) {
 			return fmt.Errorf("cannot find %s; run from the repository root or pass --command explicitly", defaultACPServer)
@@ -109,6 +107,11 @@ func RunACP(args []string, stdout io.Writer, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("resolve cwd: %w", err)
 	}
+	prepared, err := prepareACPCommand(commandValue, sessionCwd, envValues)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = prepared.cleanup() }()
 	promptText, err := loadPromptText(strings.TrimSpace(*prompt), strings.TrimSpace(*promptFile))
 	if err != nil {
 		return err
@@ -121,13 +124,13 @@ func RunACP(args []string, stdout io.Writer, stderr io.Writer) error {
 	defer cancel()
 
 	client, err := acp.NewClient(acp.Config{
-		Command: commandValue,
+		Command: prepared.commandPath,
 		Args:    argValues,
 		Cwd:     sessionCwd,
-		Env:     envValues,
+		Env:     prepared.env,
 	})
 	if err != nil {
-		return err
+		return errors.Join(err, prepared.cleanup())
 	}
 	defer func() { _ = client.Close() }()
 	for method, text := range extText {
@@ -196,11 +199,11 @@ func RunACP(args []string, stdout io.Writer, stderr io.Writer) error {
 		initResp.AgentInfo.Version,
 	)
 
-	sessionResp, err := client.NewSession(ctx, sessionCwd)
+	sessionResp, err := client.NewSession(ctx, prepared.sessionACPPath)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stderr, "acp session id=%s cwd=%s\n", sessionResp.SessionID, sessionCwd)
+	fmt.Fprintf(stderr, "acp session id=%s cwd=%s\n", sessionResp.SessionID, prepared.sessionACPPath)
 
 	promptResp, err := client.Prompt(ctx, acp.PromptRequest{
 		SessionID: sessionResp.SessionID,
@@ -212,6 +215,43 @@ func RunACP(args []string, stdout io.Writer, stderr io.Writer) error {
 	_, _ = io.WriteString(stdout, "\n")
 	fmt.Fprintf(stderr, "acp stop_reason=%s\n", promptResp.StopReason)
 	return nil
+}
+
+type preparedACPCommand struct {
+	commandPath    string
+	sessionACPPath string
+	env            []string
+	cleanup        func() error
+}
+
+func prepareACPCommand(commandValue string, sessionCwd string, env []string) (preparedACPCommand, error) {
+	prepared := preparedACPCommand{
+		commandPath:    strings.TrimSpace(commandValue),
+		sessionACPPath: strings.TrimSpace(sessionCwd),
+		env:            append([]string{}, env...),
+		cleanup:        func() error { return nil },
+	}
+	if !runner.UsesPIContainerWrapper(prepared.commandPath) {
+		return prepared, nil
+	}
+	commandPath := prepared.commandPath
+	if !filepath.IsAbs(commandPath) {
+		var err error
+		commandPath, err = filepath.Abs(commandPath)
+		if err != nil {
+			return preparedACPCommand{}, fmt.Errorf("resolve ACP command path: %w", err)
+		}
+	}
+	commonRoot := filepath.Dir(filepath.Dir(commandPath))
+	containerHomeDir, cleanup, err := runner.PrepareEphemeralPIHome(commonRoot)
+	if err != nil {
+		return preparedACPCommand{}, err
+	}
+	prepared.commandPath = commandPath
+	prepared.sessionACPPath = "/home/user"
+	prepared.env = append(prepared.env, "PI_CONTAINER_HOME_DIR="+containerHomeDir)
+	prepared.cleanup = cleanup
+	return prepared, nil
 }
 
 func hasEnvKey(env []string, key string) bool {

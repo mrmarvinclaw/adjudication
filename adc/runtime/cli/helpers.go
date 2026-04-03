@@ -117,10 +117,7 @@ func defaultXProxyConfigPath() string {
 }
 
 func defaultACPServerPath() string {
-	return resolveDefault(
-		firstExistingPath(defaultCommonPath("pi-container", "acp-podman.sh"), "pi-container/acp-podman.sh"),
-		defaultCommonPath("pi-container", "acp-podman.sh"),
-	)
+	return filepath.FromSlash("common/pi-container/acp-podman.sh")
 }
 
 func fileExists(path string) bool {

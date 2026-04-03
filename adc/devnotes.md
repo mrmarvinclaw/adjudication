@@ -1,5 +1,45 @@
 # Development Notes
 
+## 2026-04-03: `adc acp` wrapper staging
+
+### References
+
+- ACP CLI entrypoint: [`runtime/cli/acp.go`](runtime/cli/acp.go)
+- PI-home staging path: [`runtime/runner/pi_container_home.go`](runtime/runner/pi_container_home.go)
+- ACP role wrapper setup: [`runtime/runner/acp_role.go`](runtime/runner/acp_role.go)
+- Podman ACP wrapper: [`../common/pi-container/acp-podman.sh`](../common/pi-container/acp-podman.sh)
+
+### Decisions
+
+- `adc acp` now stages the temporary PI home when the selected command is `acp-podman.sh` or `pi-podman.sh`.
+- That staging path already existed for `acp-role`.  The direct `acp` subcommand had been defaulting to the same wrapper without setting `PI_CONTAINER_HOME_DIR`, so the wrapper exited before ACP initialization.
+- When the wrapper is in use, `session/new` now uses `/home/user` instead of the host working directory.  That matches the wrapper mount and the existing `acp-role` behavior.
+
+### Plan
+
+- [x] Reuse the runner PI-home staging helper from `adc acp`.
+- [x] Switch wrapper-backed sessions to `/home/user`.
+- [x] Add a focused CLI test for wrapper staging.
+
+## 2026-04-03: `adc acp` default wrapper path
+
+### References
+
+- ACP CLI entrypoint: [`runtime/cli/acp.go`](runtime/cli/acp.go)
+- CLI helper defaults: [`runtime/cli/helpers.go`](runtime/cli/helpers.go)
+
+### Decisions
+
+- `adc acp` now uses the repository-root relative wrapper path `common/pi-container/acp-podman.sh` as its default ACP command.
+- The prior code joined the current working directory with a path that had already been resolved, producing duplicated prefixes such as `/repo/repo/common/...`.
+- The ACP command default should stay simple.  If the user is not running from the repository root, the command should fail fast and require `--command` explicitly.
+
+### Plan
+
+- [x] Remove the extra path join in `runtime/cli/acp.go`.
+- [x] Make `defaultACPServerPath` return the relative wrapper path directly.
+- [ ] Add a dedicated test if this area changes again.
+
 ## 2026-03-18: `../common/tools/cluster-personas.py`
 
 ### References
