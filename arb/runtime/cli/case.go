@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -15,6 +16,16 @@ import (
 	"adjudication/arb/runtime/runner"
 	"adjudication/arb/runtime/spec"
 )
+
+type caseRunSummary struct {
+	Status       string `json:"status"`
+	Result       string `json:"result,omitempty"`
+	VotesFor     *int   `json:"votes_for,omitempty"`
+	VotesAgainst *int   `json:"votes_against,omitempty"`
+	RunID        string `json:"run_id,omitempty"`
+	OutputDir    string `json:"out_dir,omitempty"`
+	Error        string `json:"error,omitempty"`
+}
 
 func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	var fs *flag.FlagSet
@@ -44,18 +55,21 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		return err
+		if err == flag.ErrHelp {
+			return nil
+		}
+		return reportCaseError(stdout, err)
 	}
 	if *complaintPath == "" || *outDir == "" {
-		return fmt.Errorf("--complaint and --out-dir are required")
+		return reportCaseError(stdout, fmt.Errorf("--complaint and --out-dir are required"))
 	}
 	raw, err := os.ReadFile(*complaintPath)
 	if err != nil {
-		return fmt.Errorf("read complaint: %w", err)
+		return reportCaseError(stdout, fmt.Errorf("read complaint: %w", err))
 	}
 	complaint, err := spec.ParseComplaintMarkdown(string(raw))
 	if err != nil {
-		return err
+		return reportCaseError(stdout, err)
 	}
 	commonRootValue := strings.TrimSpace(*commonRoot)
 	if strings.TrimSpace(*legacyCommonRoot) != "" {
@@ -63,11 +77,11 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 	commonRootResolved, err := filepath.Abs(commonRootValue)
 	if err != nil {
-		return fmt.Errorf("resolve --common-root: %w", err)
+		return reportCaseError(stdout, fmt.Errorf("resolve --common-root: %w", err))
 	}
 	policy, err := loadCasePolicy(*policyPath)
 	if err != nil {
-		return err
+		return reportCaseError(stdout, err)
 	}
 	if *councilSize > 0 {
 		policy.CouncilSize = *councilSize
@@ -76,7 +90,7 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 		policy.EvidenceStandard = strings.TrimSpace(*evidenceStandard)
 	}
 	if err := runner.ValidatePolicy(policy); err != nil {
-		return err
+		return reportCaseError(stdout, err)
 	}
 	runtimeLimits := runner.DefaultRuntimeLimits()
 	if *timeoutSeconds > 0 {
@@ -92,7 +106,7 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 		runtimeLimits.InvalidAttemptLimit = *invalidAttemptLimit
 	}
 	if err := runner.ValidateRuntimeLimits(runtimeLimits); err != nil {
-		return err
+		return reportCaseError(stdout, err)
 	}
 	councilPoolPath := strings.TrimSpace(*councilPool)
 	if councilPoolPath == "" {
@@ -112,7 +126,7 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 	explicitCaseFiles, err := resolveExplicitCaseFiles(caseFiles.values)
 	if err != nil {
-		return err
+		return reportCaseError(stdout, err)
 	}
 	cfg := runner.Config{
 		RunID:            effectiveRunID,
@@ -128,11 +142,14 @@ func RunCase(args []string, stdout io.Writer, stderr io.Writer) error {
 		ACPCommand:       acpCommandPath,
 		Engine:           lean.New([]string{*enginePath}),
 	}
-	if _, err := runner.Run(context.Background(), cfg, complaint); err != nil {
+	result, err := runner.Run(context.Background(), cfg, complaint)
+	if err != nil {
+		return reportCaseError(stdout, err)
+	}
+	if err := writeCaseSummary(stdout, buildCaseSuccessSummary(result, *outDir)); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(stdout, *outDir)
-	return err
+	return nil
 }
 
 type explicitFileList struct {
@@ -203,6 +220,112 @@ func validateExplicitCaseFilePath(path string) error {
 		return fmt.Errorf("explicit case file %s uses prohibited extension %q", path, ext)
 	default:
 		return nil
+	}
+}
+
+func buildCaseSuccessSummary(result runner.Result, outDir string) caseRunSummary {
+	votesFor, votesAgainst := finalVoteCounts(result.FinalState)
+	return caseRunSummary{
+		Status:       "ok",
+		Result:       strings.TrimSpace(result.Resolution),
+		VotesFor:     &votesFor,
+		VotesAgainst: &votesAgainst,
+		RunID:        strings.TrimSpace(result.RunID),
+		OutputDir:    strings.TrimSpace(outDir),
+	}
+}
+
+func buildCaseErrorSummary(err error) caseRunSummary {
+	return caseRunSummary{
+		Status: "error",
+		Error:  strings.TrimSpace(err.Error()),
+	}
+}
+
+func reportCaseError(stdout io.Writer, err error) error {
+	if writeErr := writeCaseSummary(stdout, buildCaseErrorSummary(err)); writeErr != nil {
+		return writeErr
+	}
+	return &ReportedError{Err: err}
+}
+
+func writeCaseSummary(w io.Writer, summary caseRunSummary) error {
+	wire, err := json.Marshal(summary)
+	if err != nil {
+		return fmt.Errorf("marshal case summary: %w", err)
+	}
+	if _, err := fmt.Fprintln(w, string(wire)); err != nil {
+		return fmt.Errorf("write case summary: %w", err)
+	}
+	return nil
+}
+
+func finalVoteCounts(state map[string]any) (int, int) {
+	caseObj := mapStringAny(state["case"])
+	if len(caseObj) == 0 {
+		return 0, 0
+	}
+	targetRound := intValue(caseObj["deliberation_round"])
+	votes := mapListAny(caseObj["council_votes"])
+	if targetRound <= 0 {
+		for _, vote := range votes {
+			if round := intValue(vote["round"]); round > targetRound {
+				targetRound = round
+			}
+		}
+	}
+	var votesFor int
+	var votesAgainst int
+	for _, vote := range votes {
+		if targetRound > 0 && intValue(vote["round"]) != targetRound {
+			continue
+		}
+		switch strings.TrimSpace(fmt.Sprintf("%v", vote["vote"])) {
+		case "demonstrated":
+			votesFor++
+		case "not_demonstrated":
+			votesAgainst++
+		}
+	}
+	return votesFor, votesAgainst
+}
+
+func mapStringAny(value any) map[string]any {
+	out, _ := value.(map[string]any)
+	if out == nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+func mapListAny(value any) []map[string]any {
+	switch v := value.(type) {
+	case []map[string]any:
+		return v
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, raw := range v {
+			entry, _ := raw.(map[string]any)
+			if entry != nil {
+				out = append(out, entry)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func intValue(value any) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
 	}
 }
 

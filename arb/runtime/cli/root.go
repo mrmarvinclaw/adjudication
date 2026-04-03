@@ -1,9 +1,33 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
+
+type ReportedError struct {
+	Err error
+}
+
+func (e *ReportedError) Error() string {
+	if e == nil || e.Err == nil {
+		return ""
+	}
+	return e.Err.Error()
+}
+
+func (e *ReportedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func IsReportedError(err error) bool {
+	var reported *ReportedError
+	return errors.As(err, &reported)
+}
 
 func Run(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 0 {

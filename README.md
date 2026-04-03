@@ -1,4 +1,4 @@
-# Adjudication
+# Agent-driven adjudication
 
 This project is an experimental AI civil litigation system that uses
 agent attorneys with either agent or human clients.
@@ -9,8 +9,8 @@ The implementation:
    [Lean](https://lean-lang.org/) with [many
    theorems](adc/docs/proofstats.md) about its behavior.
 
-1. Supports verifiable execution in [attestable instances](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nitrotpm-attestation.html) and Trusted
-   Execution Environments, which also provide confidentiality.
+1. Supports verifiable execution in [attestable instances](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nitrotpm-attestation.html) and trusted
+   execution environments (TEEs), which also provide confidentiality.
    
 1. Roughly follows the [United States Federal Rules for Civil
    Procedure](https://www.uscourts.gov/rules-policies/current-rules-practice-procedure/federal-rules-civil-procedure)
@@ -20,7 +20,7 @@ The implementation:
 1. Interacts with agent attorneys via an implementation of the [Agent
    Client
    Protocol](https://agentclientprotocol.com/get-started/introduction)
-   extended to support external tool calls for litigation.  This
+   extended to support external tool calls for litigation.  Currently the agents are implemented by [`pi`](https://github.com/badlogic/pi-mono/tree/main). This
    approach facilitates arbitrary computer use by attorney-agent teams.
    
 1. Provides somewhat sophisticated [sampling for candidate pools of AI
@@ -34,7 +34,7 @@ agent attorneys and judges.
 
 ## Overview
 
-Adjudication contains two adjudication systems in one repository and one Go module.  `adc/` models district-court procedure, including pleadings, discovery, motions, jury selection, trial, verdict, and reporting.  `arb/` models arbitration before a council, with a smaller procedural surface and a shorter path to decision.  `common/` holds the shared Go packages, provider transport, ACP bridge support, personas, `xproxy` configuration, and the container path for external attorney agents.
+This repo contains two adjudication systems in one repository and one Go module.  [Agent District Court](adc/) models U.S. Federal District Court procedure, including pleadings, discovery, motions, jury selection, trial, verdict, and reporting.  [Agent Arbitration](arb/) models arbitration before a council, with a smaller procedural surface and a shorter path to decision.
 
 Lean defines the procedural engines and the proof surface for both systems.  Go builds the command-line tools, storage layer, prompt assembly, report generation, provider clients, and ACP integration.  The repository root exists to keep those shared parts together; the day-to-day build and run entrypoints remain in `adc/` and `arb/`.
 

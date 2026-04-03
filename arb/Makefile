@@ -33,5 +33,10 @@ ex3: build
 	.bin/aar complain --situation examples/ex3/situation.md --out examples/ex3/complaint.md
 	.bin/aar case --complaint examples/ex3/complaint.md --out-dir out/ex3-demo
 
+ex4: build
+	rm -rf out/ex4-demo
+	.bin/aar case --complaint examples/ex4/complaint.md --out-dir out/ex4-demo
+
 clean:
-	rm -rf $(BIN_DIR) engine/.lake/build out/ex1-demo out/ex2-demo out/ex3-demo
+	rm -rf $(BIN_DIR) engine/.lake/build out/ex1-demo out/ex2-demo out/ex3-demo out/ex4-demo
+
