@@ -30,3 +30,6 @@ common/submodules/pi-acp/dist/
 common/submodules/pi-acp/*.log
 common/submodules/pi-acp/.eslintcache
 common/submodules/pi-acp/agentDocs/
+
+dev/
+.codex
