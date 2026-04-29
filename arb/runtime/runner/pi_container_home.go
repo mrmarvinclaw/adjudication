@@ -11,7 +11,10 @@ import (
 	xproxy "adjudication/common/xproxy"
 )
 
-const DefaultAttorneyModel = "openai://gpt-5?tools=search"
+const (
+	DefaultAttorneyModel  = "openai://gpt-5?tools=search"
+	piXProxyBaseURLEnvVar = "AGENTCOURT_PI_XPROXY_BASE_URL"
+)
 
 func usesPIContainerWrapper(command string) bool {
 	base := strings.TrimSpace(filepath.Base(command))
@@ -118,6 +121,9 @@ func stageAttorneyPIModelCatalog(raw []byte, model string, _ xproxy.ModelSpec) (
 	xproxyProvider, _ := providers["xproxy"].(map[string]any)
 	if xproxyProvider == nil {
 		return nil, fmt.Errorf("pi model catalog missing xproxy provider")
+	}
+	if baseURL := strings.TrimSpace(os.Getenv(piXProxyBaseURLEnvVar)); baseURL != "" {
+		xproxyProvider["baseUrl"] = baseURL
 	}
 	models, _ := xproxyProvider["models"].([]any)
 	for _, rawModel := range models {
