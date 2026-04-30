@@ -218,6 +218,8 @@ The proxy demo now stages the backend PI home through the same code path that
 ordinary attorney runs use.  `aar` exposes two helper commands for that
 purpose: one stages the PI home into a supplied directory, and one prints the
 current `_aar/*` tool catalog as JSON.  The demo script now uses those helpers
+instead of carrying its own copies of `settings.json`, `models.json`, and the
+tool schema.
 
 ## 2026-04-30
 
@@ -248,8 +250,23 @@ The runner now carries the invalid reasons forward and includes them in the
 final limit error in attempt order.  That keeps the stop condition the same,
 but it makes the terminal error match the actual rejection path instead of
 hiding it behind a generic summary.
-instead of carrying its own copies of `settings.json`, `models.json`, and the
-tool schema.
+
+### Invalid submission feedback now explains the next step
+
+Reference: [ACP runner](runtime/runner/acp.go)
+
+The ACP attorney path previously returned only the bare validation error on
+each rejected submission.  That told the model what failed, but it did not say
+how many invalid submissions remained or what another miss would do to the
+run.  The handler now returns structured rejection text with the current
+invalid-submission count, the remaining budget for the opportunity, and one
+corrective instruction.
+
+Length failures now report submitted and allowed characters, direct the agent
+to count characters rather than tokens, and give a resubmission target below
+the hard cap.  Final exhausted attempts switch to terminal language and state
+that the opportunity has failed and the run is ending with an error.  The
+terminal message still includes the ordered invalid-submission history.
 
 That change fixed a real mismatch.  The earlier script omitted
 `_aar/write_case_file` and hand-built the PI configuration.  After the change,

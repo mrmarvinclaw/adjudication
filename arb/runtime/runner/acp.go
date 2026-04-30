@@ -56,7 +56,6 @@ func (rc *runContext) executeAttorneyOpportunity(ctx context.Context, _ any, opp
 		mu.Unlock()
 	}
 	decisionSubmitted := false
-	invalidDecisionAttempts := 0
 	invalidDecisionReasons := make([]string, 0)
 	responseBytes := 0
 	lastAgentToolStatus := map[string]string{}
@@ -75,12 +74,13 @@ func (rc *runContext) executeAttorneyOpportunity(ctx context.Context, _ any, opp
 		notifyErr = err
 		cancel()
 	}
-	recordInvalidDecision := func(err error) {
-		invalidDecisionAttempts++
-		invalidDecisionReasons = append(invalidDecisionReasons, err.Error())
-		if invalidDecisionAttempts >= rc.cfg.Runtime.InvalidAttemptLimit {
-			setNotifyErr(formatInvalidAttemptLimitError(opportunity.Role, invalidDecisionReasons))
+	recordInvalidDecision := func(err error) error {
+		invalidDecisionReasons = append(invalidDecisionReasons, strings.TrimSpace(err.Error()))
+		feedbackErr := formatAttorneyInvalidDecisionError(opportunity, rc.cfg.Policy, invalidDecisionReasons, rc.cfg.Runtime.InvalidAttemptLimit)
+		if len(invalidDecisionReasons) >= rc.cfg.Runtime.InvalidAttemptLimit {
+			setNotifyErr(feedbackErr)
 		}
+		return feedbackErr
 	}
 	accumulateResponseBytes := func(value any) {
 		size, err := jsonPayloadSize(value)
@@ -236,22 +236,17 @@ func (rc *runContext) executeAttorneyOpportunity(ctx context.Context, _ any, opp
 		}
 		actionType, payload, err := attorneyDecision(opportunity, params, rc.fileByID, rc.cfg.Policy)
 		if err != nil {
-			recordInvalidDecision(err)
-			return nil, err
+			return nil, recordInvalidDecision(err)
 		}
 		if err := rc.validateAttorneyPayloadAgainstState(opportunity, actionType, payload); err != nil {
-			recordInvalidDecision(err)
-			return nil, err
+			return nil, recordInvalidDecision(err)
 		}
 		stepResp, err := rc.cfg.Engine.Step(rc.state, actionType, opportunity.Role, payload)
 		if err != nil {
-			recordInvalidDecision(err)
-			return nil, err
+			return nil, recordInvalidDecision(err)
 		}
 		if ok, _ := stepResp["ok"].(bool); !ok {
-			err := fmt.Errorf("%s", mapString(stepResp["error"]))
-			recordInvalidDecision(err)
-			return nil, err
+			return nil, recordInvalidDecision(fmt.Errorf("%s", mapString(stepResp["error"])))
 		}
 		rc.state = mapAny(stepResp["state"])
 		decisionSubmitted = true

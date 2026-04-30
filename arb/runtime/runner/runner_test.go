@@ -277,6 +277,76 @@ func TestFormatInvalidAttemptLimitErrorFallsBackWithoutReasons(t *testing.T) {
 	}
 }
 
+func TestFormatAttorneyInvalidDecisionErrorGuidesLengthResubmission(t *testing.T) {
+	err := formatAttorneyInvalidDecisionError(
+		Opportunity{Role: "plaintiff", Phase: "openings"},
+		DefaultPolicy(),
+		[]string{"opening statement exceeds character limit of 4000 (got 4687)"},
+		3,
+	)
+	if err == nil {
+		t.Fatalf("expected formatted error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "Opening statement exceeds the character limit: 4687 characters submitted, 4000 allowed.") {
+		t.Fatalf("missing length reason: %s", got)
+	}
+	if !strings.Contains(got, "This is invalid submission 1 of 3 for this opportunity. You have 2 invalid submissions remaining.") {
+		t.Fatalf("missing invalid-submission count: %s", got)
+	}
+	if !strings.Contains(got, "Resubmit at 3500 characters or fewer. Count characters, not tokens.") {
+		t.Fatalf("missing resubmission target: %s", got)
+	}
+	if !strings.Contains(got, "If you exhaust the remaining invalid submissions, this opportunity will fail and the run will end with an error.") {
+		t.Fatalf("missing exhaustion warning: %s", got)
+	}
+}
+
+func TestFormatAttorneyInvalidDecisionErrorGuidesOverflowResubmission(t *testing.T) {
+	err := formatAttorneyInvalidDecisionError(
+		Opportunity{Role: "plaintiff", Phase: "rebuttals"},
+		DefaultPolicy(),
+		[]string{"technical_reports for this side exceed limit of 4 (3 already used, 2 attempted, 1 remaining)"},
+		3,
+	)
+	if err == nil {
+		t.Fatalf("expected formatted error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "technical_reports for this side exceed limit of 4 (3 already used, 2 attempted, 1 remaining).") {
+		t.Fatalf("missing overflow reason: %s", got)
+	}
+	if !strings.Contains(got, "Remove the overflow and resubmit within the stated limit.") {
+		t.Fatalf("missing overflow guidance: %s", got)
+	}
+}
+
+func TestFormatAttorneyInvalidDecisionErrorExplainsFinalFailure(t *testing.T) {
+	err := formatAttorneyInvalidDecisionError(
+		Opportunity{Role: "plaintiff", Phase: "openings"},
+		DefaultPolicy(),
+		[]string{
+			"opening statement exceeds character limit of 4000 (got 4687)",
+			"payload.text is required",
+			"payload.text is required",
+		},
+		3,
+	)
+	if err == nil {
+		t.Fatalf("expected formatted error")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "This is invalid submission 3 of 3 for this opportunity. No invalid submissions remain.") {
+		t.Fatalf("missing final invalid-submission count: %s", got)
+	}
+	if !strings.Contains(got, "This opportunity has failed, and the run is ending with an error.") {
+		t.Fatalf("missing terminal failure line: %s", got)
+	}
+	if !strings.Contains(got, "Invalid submission history: attempt 1: Opening statement exceeds the character limit: 4687 characters submitted, 4000 allowed.; attempt 2: payload.text is required.; attempt 3: payload.text is required.") {
+		t.Fatalf("missing invalid-submission history: %s", got)
+	}
+}
+
 func TestValidateAttorneyPayloadAgainstStateRejectsOverlongRebuttal(t *testing.T) {
 	policy := DefaultPolicy()
 	rc := &runContext{
