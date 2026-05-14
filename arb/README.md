@@ -8,7 +8,7 @@ This repository contains the Lean engine, the Go runtime, the `aar` CLI, and a s
 
 | Path | Purpose |
 |---|---|
-| `docs/` | Project rules and notes |
+| `docs/` | Project rules and notes.  See [`docs/openclaw-attorneys.md`](docs/openclaw-attorneys.md) for the reproducible OpenClaw-attorney workflow. |
 | `engine/` | Lean arbitration engine |
 | `runtime/` | Go CLI and runtime bridge |
 | `examples/` | Example disputes |
@@ -105,7 +105,7 @@ This command shows the same pattern with one global ACP command and a role-speci
   --plaintiff-acp-endpoint 'tcp://agent.example.com:7000'
 ```
 
-For OpenClaw attorneys, prefer `--*-acp-endpoint` and run an OpenClaw ACP attorney server at that endpoint.  AAR will connect over ACP and assume the remote OpenClaw side owns model selection, session policy, and native tool availability.
+For OpenClaw attorneys, prefer `--*-acp-endpoint` and run an OpenClaw ACP attorney server at that endpoint.  AAR will connect over ACP and assume the remote OpenClaw side owns model selection, session policy, and native tool availability.  The full reproduction guide is [`docs/openclaw-attorneys.md`](docs/openclaw-attorneys.md).
 
 The `aar-openclaw-attorney` adapter is a local compatibility wrapper for smoke tests and custom integrations.  It preloads the visible AAR record and text-readable case files, asks OpenClaw for one strict JSON filing, and submits that filing through `_aar/submit_decision`.  It does not accept or forward an AAR model selection.
 

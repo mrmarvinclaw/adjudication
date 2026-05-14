@@ -1007,3 +1007,21 @@ Observation: the operator clarified that the earlier technical-report discussion
 Action: Wrote `../evidence.md` at the adjudication repo root documenting the current state, the consequence for open-record Clavicular-style runs, and the desired `_aar/submit_evidence` / `_aar/attach_evidence` direction.
 
 Follow-up: Added a `Scope of Change` section to `../evidence.md` noting that first-class attorney-submitted evidence affects Lean state, transition rules, proofs, runtime ACP methods, filing schemas, rendering/output artifacts, policy, and reproducibility semantics.
+
+## 2026-05-14 18:32 CDT — Clavicular OpenClaw open-record run start
+
+Observe: The requested case directory exists, AAR/OpenClaw binaries are present, provider keys are available in ~/keys.txt, and Podman is running. The current endpoint design intentionally leaves model selection and native tool availability to OpenClaw; AAR endpoint metadata therefore does not itself mark search_enabled true.
+Think: Use the endpoint bridge rather than misleading local xproxy model metadata. Supply an OpenClaw extra prompt making this an open-record evidence-discovery run and asking the lawyers to use any available public-search/browser tools for the original clip, transcript, or clarification. Run exactly one arbitration with both sides using the OpenClaw attorney endpoint and a fresh output directory.
+Do: Starting output directory out/clavicular-openclaw-both-open-20260514-183235, batch directory out/_batch-clavicular-openclaw-both-open-20260514-183235, bridge port 19713.
+
+Run command completed for out/clavicular-openclaw-both-open-20260514-183235. The AAR run itself returned ok/not_demonstrated; the wrapper exited nonzero after completion because the shell was zsh and the bash-only PIPESTATUS array reference failed after tee. The run log was copied manually into the output directory.
+
+Verify: Required artifacts are present for out/clavicular-openclaw-both-open-20260514-183235. The OpenClaw bridge process left by the wrapper error was stopped after both attorney children had exited cleanly. Summary written to out/_batch-clavicular-openclaw-both-open-20260514-183235/summary.md. Council result: not_demonstrated, 0 demonstrated / 3 not_demonstrated. Both attorneys filed open-record technical reports; no original Clavicular VOD, clean Clavicular transcript, representative statement, or separate Polymarket clarification was retrieved.
+
+## 2026-05-14 — OpenClaw-attorney reproducibility documentation
+
+Observation: The operator asked that the approach of using OpenClaw attorneys be documented well enough for another person to reproduce it from the repository.
+
+Action: Added `docs/openclaw-attorneys.md` with the architecture, prerequisites, exact closed-record and open-record command sequences, environment variables, capability boundary, post-run artifact checks, Clavicular development-run paths, and current limitations around technical reports versus first-class submitted evidence. Updated `README.md` to link the guide from the layout and OpenClaw attorney sections. Added a `devnotes.md` entry pointing to the guide.
+
+Verification: `node --check tools/openclaw-acp-tcp-bridge.js` passed, `make test` passed, and a local Markdown-link check passed for `README.md`, `docs/openclaw-attorneys.md`, and `devnotes.md`. No commit or push has been made.

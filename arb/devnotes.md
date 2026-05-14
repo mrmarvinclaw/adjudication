@@ -577,3 +577,22 @@ itself configurable through policy JSON.
 AAR now treats `--*-acp-endpoint` as a generic remote ACP attorney path.  A role using a remote endpoint does not inherit the global `--attorney-model`, does not record an AAR-selected model, and does not derive search capability from an xproxy model URI.  Role-specific `--*-attorney-model` is invalid with the same role's `--*-acp-endpoint`.
 
 The `--attorney-model` flag remains a local Pi/xproxy configuration flag.  Remote ACP attorneys, including OpenClaw ACP attorneys, own their own model selection and native tool availability.  The attorney prompt now uses a neutral capability statement for remote ACP endpoints instead of claiming native search availability or absence from AAR-side model metadata.
+
+## 2026-05-14
+
+### Reproducible OpenClaw-attorney workflow documentation
+
+Reference: [OpenClaw Attorneys](docs/openclaw-attorneys.md)
+
+The repository now has a dedicated reproduction guide for using OpenClaw agents
+as AAR attorneys.  The guide documents the `.bin/aar-openclaw-attorney` stdio
+adapter, the TCP bridge helper, the model/capability boundary for endpoint
+attorneys, closed-record and open-record run commands, required environment
+variables, expected artifacts, and the Clavicular development runs.
+
+The key operational rule is that AAR controls the ACP transport and `_aar/*`
+client-method contract, while OpenClaw controls model selection and native tool
+availability.  Open-record runs therefore require both an OpenClaw lawyer agent
+with the relevant tools available and an explicit `AAR_OPENCLAW_AGENT_EXTRA_PROMPT`
+that tells counsel to investigate public sources and preserve provenance in
+technical reports.
