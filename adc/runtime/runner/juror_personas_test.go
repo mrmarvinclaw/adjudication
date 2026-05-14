@@ -29,7 +29,7 @@ func TestLoadJurorPersonaPoolAndSample(t *testing.T) {
 	csvPath := filepath.Join(root, "etc", "personas.csv")
 	csv := strings.Join([]string{
 		"openrouter://openai/gpt-5,personas/persons/j1.txt",
-		"openrouter://anthropic/claude-3.7-sonnet,personas/persons/j2.txt",
+		"openrouter://anthropic/claude-sonnet-4.5,personas/persons/j2.txt",
 	}, "\n")
 	if err := os.WriteFile(csvPath, []byte(csv), 0o644); err != nil {
 		t.Fatalf("WriteFile csv error = %v", err)
@@ -73,7 +73,7 @@ func TestApplyJurorPersonaDefaultsAndOpportunityContext(t *testing.T) {
 	pool := &jurorPersonaPool{
 		pairs: []jurorPersonaPair{
 			{Model: "openrouter://openai/gpt-5", PersonaText: "skeptical of screenshots", PersonaFile: "personas/persons/j1.txt"},
-			{Model: "openrouter://anthropic/claude-3.7-sonnet", PersonaText: "insists on corroboration", PersonaFile: "personas/persons/j2.txt"},
+			{Model: "openrouter://anthropic/claude-sonnet-4.5", PersonaText: "insists on corroboration", PersonaFile: "personas/persons/j2.txt"},
 		},
 		remaining: []int{0, 1},
 	}

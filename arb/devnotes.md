@@ -571,3 +571,9 @@ targets load by default.  The target-length guidance now uses 75% of the hard
 cap again for both the first-submission prompt target and the retry hint.  That
 gives openings a `3750` target under a `5000` cap, while leaving the hard cap
 itself configurable through policy JSON.
+
+### Remote ACP attorney endpoint owns model selection
+
+AAR now treats `--*-acp-endpoint` as a generic remote ACP attorney path.  A role using a remote endpoint does not inherit the global `--attorney-model`, does not record an AAR-selected model, and does not derive search capability from an xproxy model URI.  Role-specific `--*-attorney-model` is invalid with the same role's `--*-acp-endpoint`.
+
+The `--attorney-model` flag remains a local Pi/xproxy configuration flag.  Remote ACP attorneys, including OpenClaw ACP attorneys, own their own model selection and native tool availability.  The attorney prompt now uses a neutral capability statement for remote ACP endpoints instead of claiming native search availability or absence from AAR-side model metadata.
