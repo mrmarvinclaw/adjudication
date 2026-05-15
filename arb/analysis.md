@@ -1035,3 +1035,54 @@ Thinking: The correct repair is to add explicit preservation for `submit_evidenc
 Do the right thing: Add a specific `step_submit_evidence_preserves_councilVoteIntegrity` lemma and dispatch branch, then rerun `make prove` to find the next invariant file requiring the new action case.
 
 Verification: Pending.
+
+## 2026-05-14 20:16 CDT — Open-record OpenClaw attorney evidence-support run
+
+Ran exactly one open-record/search-enabled AgentCourt arbitration on branch `openclaw-evidence-support` with OpenClaw attorneys on both sides through ACP bridge `tcp://127.0.0.1:19702`.
+
+- Case: `examples/clavicular-pregnancy-credible-announcement-condition-simple`
+- Output: `out/clavicular-openclaw-both-open-evidence-20260514-201636`
+- Batch summary: `out/_batch-clavicular-openclaw-both-open-evidence-20260514-201636/summary.md`
+- Result: `not_demonstrated`, 0 demonstrated / 3 not_demonstrated.
+- Evidence submission behavior: no first-class submitted evidence. `submitted-evidence/` was absent or empty, `state.json .case.submitted_evidence` was `[]`, no event contained `submit_evidence`, and the digest reports `Submitted Evidence: (none)`.
+- Attorney filings cited only existing packet files in `offered_files`: `market-page.txt`, `secondary-reporting.txt`, `official-source-record.txt`, `primary-evidence.txt`, and `unresolved-record-gaps.txt`.
+- The attorneys used `technical_reports` as work product, including a defendant open-record search note, but did not preserve new source content through `aar_submit_evidence` and did not cite returned evidence file IDs in later filings.
+- Operational note: AAR completed and emitted `status: ok`; the shell wrapper exited nonzero afterward because `status` is a read-only zsh variable in the post-pipeline bookkeeping. `run.log` was copied manually into the output directory after completion. The bridge was stopped after the run.
+
+2026-05-14 — Closing evidence guard and structured OpenClaw evidence bundle
+
+Observe: The requested changes were to prohibit evidence in closing statements and support a structured OpenClaw attorney output bundle that can carry first-class evidence submissions before the merits filing. Existing engine policy allowed supplemental materials through the generic merits-submission helper when enabled, while the OpenClaw attorney adapter could only submit a final decision payload.
+
+Think: Closing statements should be record-only. The correct boundary is both adapter-level validation and engine-level rejection, so malformed or non-OpenClaw clients cannot introduce `offered_files`, `technical_reports`, or equivalent submitted evidence during closings. Structured evidence must remain phase-bounded: accepted only for `submit_argument` and `submit_rebuttal`, submitted before the final filing, and then cited by returned `file_id` values in `offered_files`.
+
+Do: Added structured OpenClaw attorney bundle parsing in `runtime/openclawattorney/server.go`: `{ "evidence_submissions": [...], "decision": {...} }` is accepted, `_aar/submit_evidence` calls are sent before `_aar/submit_decision`, adapter-only fields are stripped, and accepted `file_id`s are appended to `offered_files` for argument/rebuttal filings. Added runtime tests for bundle parsing, submission ordering, and closing supplemental-material rejection. Hardened `runtime/runner/acp.go` validation so `deliver_closing_statement` rejects `offered_files` and `technical_reports`. Changed `engine/Main.lean` so `deliver_closing_statement` explicitly calls `requireNoSupplementalMaterials` and adds only the closing filing. Repaired `Proofs.StepPreservation` for the new closing transition.
+
+Verify: `PATH="$HOME/.elan/bin:$PATH" lake build Proofs.StepPreservation` passed. `PATH="$HOME/.elan/bin:$PATH" make prove` passed. `PATH="$HOME/.elan/bin:$PATH" make build && go test ./runtime/...` passed. One open-record Clavicular run with both sides using OpenClaw attorneys through `tcp://127.0.0.1:19722` completed successfully: `out/clavicular-openclaw-both-open-bundle-20260514-205047`, run id `run-1778809847631265000`, result `not_demonstrated`, 0 demonstrated / 3 not_demonstrated. The run produced first-class submitted evidence: `submitted-evidence/submitted-evidence-01-defendant-99998845114a.md`, recorded in `state.json` and cited as `DX-1` by the defendant argument and plaintiff rebuttal. Closing events contained only `text` payloads and no supplemental material fields.
+
+## 2026-05-14 Clavicular open-record OpenClaw-attorney seq5 batch
+
+Observe: The requested batch was five sequential open-record Clavicular arbitrations using OpenClaw attorneys on both sides through the local ACP TCP bridge. Preflight passed on branch `openclaw-evidence-support`: `.bin/aar`, `.bin/aarengine`, and `.bin/aar-openclaw-attorney` were executable; `node --check tools/openclaw-acp-tcp-bridge.js` passed; and `$HOME/keys.txt` was present without recording values. The case directory was `examples/clavicular-pregnancy-credible-announcement-condition-simple`. Batch directory: `out/_batch-clavicular-openclaw-both-open-seq5-20260514-213552`.
+
+Think: The correct execution was sequential, with fresh output directories and no retry after an output directory existed. OpenClaw attorneys were instructed to use open-record tools when useful, submit external source material through `aar_submit_evidence`, cite returned `file_id` values in merits filings, and keep closings free of supplemental materials.
+
+Do: Started the bridge on `tcp://127.0.0.1:19724` and ran five cases. Run 1 failed after plaintiff evidence submission and argument with `acp session/prompt failed: parse OpenClaw lawyer decision: invalid character 'd' after object key:value pair`; it was recorded and not retried. Runs 2 through 5 completed `ok/not_demonstrated`, each with final council vote 0 demonstrated / 3 not_demonstrated. Output directories: `out/clavicular-openclaw-both-open-seq1-20260514-213650`, `out/clavicular-openclaw-both-open-seq2-20260514-214307`, `out/clavicular-openclaw-both-open-seq3-20260514-215329`, `out/clavicular-openclaw-both-open-seq4-20260514-220012`, and `out/clavicular-openclaw-both-open-seq5-20260514-220810`.
+
+Verify: Inspected `events.ndjson`, completed `run.json`/`state.json`/`council.json`, submitted-evidence records, offered files, final council votes, and closing events. The completed-run aggregate was 0 demonstrated / 12 not_demonstrated. Final vote labels matched rationales. Completed runs submitted seven first-class evidence files, and the failed run submitted two before failure. Submitted evidence was cited by returned `file_id` values when used. No completed-run closing event carried `offered_files`, `technical_reports`, or `evidence_submissions`.
+
+Document: Wrote batch summary to `out/_batch-clavicular-openclaw-both-open-seq5-20260514-213552/summary.md` and extracted structured results to `out/_batch-clavicular-openclaw-both-open-seq5-20260514-213552/extracted-results.json`. No commits, pushes, publication steps, OpenClaw configuration changes, or gateway restarts were made.
+
+## 2026-05-14 — OpenClaw attorney evidence-prompt iteration
+
+Observe: The requested prompt-only work was to improve OpenClaw attorney prompting, raise the default submitted-evidence size to 5 MB, run an arbitration, evaluate evidence finding/submission, and iterate. Existing prompts already warned against invented facts and required `aar_submit_evidence` before relying on external material, but they did not strongly direct primary-source search, faithful capture of binary/audiovisual material, or search-gap disclosure.
+
+Think: The right prompt change is not to make attorneys cite more URLs. It is to force a source-preservation workflow: identify decisive factual elements, search for primary or near-primary material, submit actual content or faithful extraction before relying on it, keep technical reports separate from source evidence, and state unresolved primary-source gaps. The prompt also has to bound search effort, because unbounded primary-source chasing can stall an attorney phase.
+
+Do: Updated `etc/policy.json` from `max_submitted_evidence_bytes: 131072` to `5242880`. Updated `prompts/attorney-common.md`, `prompts/attorney-arguments.md`, and `prompts/attorney-rebuttals.md` to require evidence discipline, primary-source preference, preservation before citation, binary/audiovisual companion extraction when needed, concise search ledgers for hard-to-get sources, and bounded search.
+
+Verify: `python3 -m json.tool etc/policy.json` passes and reports `max_submitted_evidence_bytes = 5242880`. Ran OpenClaw-attorney arbitrations on `examples/clavicular-pregnancy-credible-announcement-condition-simple`:
+
+- v1: `out/clavicular-openclaw-evidenceprompt-v1-20260514-230012`, exit 0, result `no_majority`, 1 demonstrated / 2 not_demonstrated. Evidence submission improved: plaintiff submitted YouTube metadata and Reddit JSON; defendant submitted Polymarket Gamma API metadata and a Poprant/Indiatimes extraction. Weakness: no primary stream/VOD/transcript, and no clean search ledger.
+- v2: `out/clavicular-openclaw-evidenceprompt-v2-20260514-231634`, killed. The stronger search-ledger wording caused the attorney phase to stall before arguments. This showed that evidence prompts need explicit bounded-search language.
+- v3: `out/clavicular-openclaw-evidenceprompt-v3-20260514-232807`, exit 0, result `not_demonstrated`, 0 demonstrated / 3 not_demonstrated. Evidence submission improved again: plaintiff submitted TikTok browser metadata, Forbes capture, BollywoodShaadis fact-check, and a second TikTok browser capture in rebuttal; defendant submitted Poprant/Indiatimes and Times of India captures. Both sides included concise technical-report search ledgers listing decisive source targets, searches, material submitted, failed retrievals, and unresolved gaps. The council focused correctly on the missing primary Clavicular statement/VOD/transcript versus conflicting secondary/social evidence.
+
+Document: This note records why the final prompt version includes bounded search as well as evidence-preservation discipline. The v3 behavior is acceptable for now without runtime code changes. The remaining operational limitation is that TikTok/video material was preserved only as browser-visible metadata and page text, not as actual audiovisual artifacts or transcripts.

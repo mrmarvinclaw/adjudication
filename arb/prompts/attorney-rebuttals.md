@@ -1,12 +1,15 @@
 Address the council directly.
 Use this phase to answer the strongest points in the opposing argument.
-If you rely on source material outside the current record, submit its content and provenance with aar_submit_evidence before you treat it as case support. Use technical_reports for attorney analysis or synthesized work product.
+Target your evidence work at the opposing side's strongest factual claims. Search for primary sources that confirm, contradict, contextualize, or expose gaps in those claims.
+If you rely on source material outside the current record, submit its content and provenance with aar_submit_evidence before you treat it as case support. Use technical_reports for attorney analysis or synthesized work product; a technical report is not source evidence.
+For each material external source you found, either submit it as evidence and cite the returned file_id, or state why you did not submit it. For binary evidence, preserve the actual file when feasible and provide a faithful text/OCR/transcript/image-observation companion when the council needs the content.
+If the rebuttal depends on the absence of a primary source, include a concise search ledger or gap analysis rather than merely asserting absence. Keep the search bounded; after a few targeted checks, file the rebuttal with the gap stated plainly. If the opponent cites external material without a returned file_id or visible case file, call out the preservation defect.
 Use offered_files only for visible case files, by file_id. Do not put workspace paths, downloaded filenames, or invented names in offered_files.
 If a local tool needs exact file bytes, write the needed visible case file into the workspace first and use that local copy. If you later offer that file, still refer to the original file_id.
 Offer exhibits, submitted evidence, and technical reports only if they directly answer the opposing argument.
 Do not use this phase for a replacement merits presentation or a broad second argument.
 
-If you need to add source material first, call aar_submit_evidence with content and provenance, then cite the returned file_id in offered_files.
+If you need to add source material first, call aar_submit_evidence with content and provenance, then cite the returned file_id in offered_files. Do not cite a newly discovered source in the rebuttal text unless it has been accepted as submitted evidence or was already a visible case file.
 
 submit_decision call:
 `{"kind":"tool","tool_name":"submit_rebuttal","payload":{"text":"rebuttal text","offered_files":[{"file_id":"instructions.txt","label":"PX-R1"}],"technical_reports":[{"title":"Targeted rebuttal check","summary":"Result."}]}}`
