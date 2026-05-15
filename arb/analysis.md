@@ -1025,3 +1025,13 @@ Observation: The operator asked that the approach of using OpenClaw attorneys be
 Action: Added `docs/openclaw-attorneys.md` with the architecture, prerequisites, exact closed-record and open-record command sequences, environment variables, capability boundary, post-run artifact checks, Clavicular development-run paths, and current limitations around technical reports versus first-class submitted evidence. Updated `README.md` to link the guide from the layout and OpenClaw attorney sections. Added a `devnotes.md` entry pointing to the guide.
 
 Verification: `node --check tools/openclaw-acp-tcp-bridge.js` passed, `make test` passed, and a local Markdown-link check passed for `README.md`, `docs/openclaw-attorneys.md`, and `devnotes.md`. No commit or push has been made.
+
+## 2026-05-14 evidence support proof repair
+
+Observation: `make prove` now passes `Proofs.StepPreservation`, `Proofs.CaseFrame`, `Proofs.ReachableInvariants`, `Proofs.ReachableMaterialLimits`, and `Proofs.RecordProvenance`. The remaining proof failure is in `Proofs.CouncilIntegrity`, where the public `step` dispatch still falls through on the new `submit_evidence` action.
+
+Thinking: The correct repair is to add explicit preservation for `submit_evidence`. Evidence submission appends to `submitted_evidence` and must leave council votes and council members unchanged, so it should preserve council vote integrity without weakening the invariant.
+
+Do the right thing: Add a specific `step_submit_evidence_preserves_councilVoteIntegrity` lemma and dispatch branch, then rerun `make prove` to find the next invariant file requiring the new action case.
+
+Verification: Pending.

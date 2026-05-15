@@ -1083,6 +1083,168 @@ theorem step_submit_rebuttal_preserves_material_limits
     appendSupplementalMaterials_preserves_material_limits
       s1 offered reports "plaintiff" hBase1 hOfferedRole hReportRole hOfferedCap1 hReportCap1
 
+theorem submitEvidence_result
+    (s t : ArbitrationState)
+    (actorRole : String)
+    (payload : Lean.Json)
+    (hSubmit : submitEvidence s actorRole payload = .ok t) :
+    ∃ evidence,
+      t = stateWithCase s (appendSubmittedEvidence s.case evidence) := by
+  have handle (expectedRole : String)
+      (hCore :
+        (do
+          requireRole actorRole expectedRole
+          let parsedEvidence ← parseSubmittedEvidence payload s.case.phase expectedRole
+          let evidence := { parsedEvidence with role := expectedRole }
+          if s.case.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
+            throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
+          else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+            throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
+          else
+            let total := submittedEvidenceCountForRole s.case.submitted_evidence expectedRole + 1
+            requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+            pure <| stateWithCase s (appendSubmittedEvidence s.case evidence)) = .ok t) :
+      ∃ evidence,
+        t = stateWithCase s (appendSubmittedEvidence s.case evidence) := by
+    cases hRole : requireRole actorRole expectedRole with
+    | error err =>
+        rw [hRole] at hCore
+        simp at hCore
+        cases hCore
+    | ok okv =>
+        cases okv
+        rw [hRole] at hCore
+        simp at hCore
+        cases hEvidence : parseSubmittedEvidence payload s.case.phase expectedRole with
+        | error err =>
+            rw [hEvidence] at hCore
+            cases hCore
+        | ok parsedEvidence =>
+            rw [hEvidence] at hCore
+            let evidence : SubmittedEvidence := { parsedEvidence with role := expectedRole }
+            change
+              (if ∃ x, x ∈ s.case.submitted_evidence ∧ x.file_id = evidence.file_id then
+                throw (toString "duplicate submitted evidence file_id: " ++ toString evidence.file_id)
+              else if s.policy.max_submitted_evidence_bytes < evidence.size_bytes then
+                throw (toString "submitted evidence exceeds byte limit of " ++
+                  toString s.policy.max_submitted_evidence_bytes)
+              else
+                (fun _ => stateWithCase s (appendSubmittedEvidence s.case evidence)) <$>
+                  requireCountWithinLimit "submitted_evidence for this side"
+                    (submittedEvidenceCountForRole s.case.submitted_evidence expectedRole + 1)
+                    s.policy.max_submitted_evidence_per_side) = .ok t at hCore
+            by_cases hDup : ∃ x, x ∈ s.case.submitted_evidence ∧ x.file_id = evidence.file_id
+            · simp [hDup] at hCore
+            · simp [hDup] at hCore
+              by_cases hSize : s.policy.max_submitted_evidence_bytes < evidence.size_bytes
+              · simp [hSize] at hCore
+              · simp [hSize] at hCore
+                let total := submittedEvidenceCountForRole s.case.submitted_evidence expectedRole + 1
+                cases hCount : requireCountWithinLimit "submitted_evidence for this side"
+                    total s.policy.max_submitted_evidence_per_side with
+                | error err =>
+                    simp [total, hCount] at hCore
+                    cases hCore
+                | ok okv =>
+                    cases okv
+                    simp [total, hCount] at hCore
+                    cases hCore
+                    exact ⟨evidence, rfl⟩
+  by_cases hArgs : s.case.phase = "arguments"
+  · have hCore :
+        (do
+          requireRole actorRole (if s.case.arguments.isEmpty then "plaintiff" else "defendant")
+          let parsedEvidence ← parseSubmittedEvidence payload s.case.phase (if s.case.arguments.isEmpty then "plaintiff" else "defendant")
+          let evidence := { parsedEvidence with role := (if s.case.arguments.isEmpty then "plaintiff" else "defendant") }
+          if s.case.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
+            throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
+          else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+            throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
+          else
+            let total := submittedEvidenceCountForRole s.case.submitted_evidence (if s.case.arguments.isEmpty then "plaintiff" else "defendant") + 1
+            requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+            pure <| stateWithCase s (appendSubmittedEvidence s.case evidence)) = .ok t := by
+        simpa [submitEvidence, hArgs] using hSubmit
+    exact handle (if s.case.arguments.isEmpty then "plaintiff" else "defendant") hCore
+  · by_cases hRebuttals : s.case.phase = "rebuttals"
+    · cases hEmpty : s.case.rebuttals.isEmpty with
+      | true =>
+        have hCore :
+            (do
+              requireRole actorRole "plaintiff"
+              let parsedEvidence ← parseSubmittedEvidence payload s.case.phase "plaintiff"
+              let evidence := { parsedEvidence with role := "plaintiff" }
+              if s.case.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
+                throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
+              else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+                throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
+              else
+                let total := submittedEvidenceCountForRole s.case.submitted_evidence "plaintiff" + 1
+                requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+                pure <| stateWithCase s (appendSubmittedEvidence s.case evidence)) = .ok t := by
+            simpa [submitEvidence, hArgs, hRebuttals, hEmpty] using hSubmit
+        exact handle "plaintiff" hCore
+      | false =>
+        have hClosed :
+            (do
+              let expectedRole ← (throw "rebuttal evidence is closed" : Except String String)
+              requireRole actorRole expectedRole
+              let parsedEvidence ← parseSubmittedEvidence payload s.case.phase expectedRole
+              let evidence := { parsedEvidence with role := expectedRole }
+              if s.case.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
+                throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
+              else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+                throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
+              else
+                let total := submittedEvidenceCountForRole s.case.submitted_evidence expectedRole + 1
+                requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+                pure <| stateWithCase s (appendSubmittedEvidence s.case evidence)) = .ok t := by
+          simpa [submitEvidence, hArgs, hRebuttals, hEmpty] using hSubmit
+        change Except.error "rebuttal evidence is closed" = .ok t at hClosed
+        cases hClosed
+    · have hClosed :
+          (do
+            let expectedRole ← (throw "submitted evidence is allowed only in arguments and rebuttals" : Except String String)
+            requireRole actorRole expectedRole
+            let parsedEvidence ← parseSubmittedEvidence payload s.case.phase expectedRole
+            let evidence := { parsedEvidence with role := expectedRole }
+            if s.case.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
+              throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
+            else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+              throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
+            else
+              let total := submittedEvidenceCountForRole s.case.submitted_evidence expectedRole + 1
+              requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+              pure <| stateWithCase s (appendSubmittedEvidence s.case evidence)) = .ok t := by
+        simpa [submitEvidence, hArgs, hRebuttals] using hSubmit
+      change Except.error "submitted evidence is allowed only in arguments and rebuttals" = .ok t at hClosed
+      cases hClosed
+
+theorem step_submit_evidence_preserves_phaseShape
+    (s t : ArbitrationState)
+    (action : CourtAction)
+    (hType : action.action_type = "submit_evidence")
+    (hShape : phaseShape s.case)
+    (hStep : step { state := s, action := action } = .ok t) :
+    phaseShape t.case := by
+  have hSubmit : submitEvidence s action.actor_role action.payload = .ok t := by
+    simpa [step, hType] using hStep
+  rcases submitEvidence_result s t action.actor_role action.payload hSubmit with ⟨evidence, rfl⟩
+  exact stateWithCase_preserves_phaseShape s _
+    (appendSubmittedEvidence_preserves_phaseShape s.case evidence hShape)
+
+theorem step_submit_evidence_preserves_material_limits
+    (s t : ArbitrationState)
+    (action : CourtAction)
+    (hType : action.action_type = "submit_evidence")
+    (hLimits : materialLimitsRespected s)
+    (hStep : step { state := s, action := action } = .ok t) :
+    materialLimitsRespected t := by
+  have hSubmit : submitEvidence s action.actor_role action.payload = .ok t := by
+    simpa [step, hType] using hStep
+  rcases submitEvidence_result s t action.actor_role action.payload hSubmit with ⟨evidence, rfl⟩
+  simpa [stateWithCase] using appendSubmittedEvidence_preserves_material_limits s evidence hLimits
+
 /--
 A successful surrebuttal step preserves the merits-sequence invariant.
 

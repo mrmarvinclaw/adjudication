@@ -524,14 +524,16 @@ def submitEvidence
           throw "rebuttal evidence is closed"
     | _ => throw "submitted evidence is allowed only in arguments and rebuttals"
   requireRole actorRole expectedRole
-  let evidence ← parseSubmittedEvidence payload c.phase expectedRole
+  let parsedEvidence ← parseSubmittedEvidence payload c.phase expectedRole
+  let evidence := { parsedEvidence with role := expectedRole }
   if c.submitted_evidence.any (fun item => item.file_id = evidence.file_id) then
     throw s!"duplicate submitted evidence file_id: {evidence.file_id}"
-  if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
+  else if evidence.size_bytes > s.policy.max_submitted_evidence_bytes then
     throw s!"submitted evidence exceeds byte limit of {s.policy.max_submitted_evidence_bytes}"
-  let total := submittedEvidenceCountForRole c.submitted_evidence expectedRole + 1
-  requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
-  pure <| stateWithCase s (appendSubmittedEvidence c evidence)
+  else
+    let total := submittedEvidenceCountForRole c.submitted_evidence expectedRole + 1
+    requireCountWithinLimit "submitted_evidence for this side" total s.policy.max_submitted_evidence_per_side
+    pure <| stateWithCase s (appendSubmittedEvidence c evidence)
 
 def requireNoSupplementalMaterials (payload : Json) : Except String Unit := do
   let offered ← getOptionalArray payload "offered_files"
