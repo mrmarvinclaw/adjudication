@@ -460,9 +460,19 @@ func attorneyDecision(opportunity Opportunity, params map[string]any, fileByID m
 
 func validateAttorneyPayload(actionType string, payload map[string]any, fileByID map[string]CaseFile, policy Policy) error {
 	switch actionType {
-	case "record_opening_statement", "deliver_closing_statement":
+	case "record_opening_statement":
 		if mapString(payload["text"]) == "" {
 			return fmt.Errorf("payload.text is required")
+		}
+	case "deliver_closing_statement":
+		if mapString(payload["text"]) == "" {
+			return fmt.Errorf("payload.text is required")
+		}
+		if len(listOfMaps(payload["offered_files"])) != 0 {
+			return fmt.Errorf("offered_files are allowed only in arguments and rebuttals")
+		}
+		if len(listOfMaps(payload["technical_reports"])) != 0 {
+			return fmt.Errorf("technical_reports are allowed only in arguments and rebuttals")
 		}
 	case "submit_argument":
 		if mapString(payload["text"]) == "" {

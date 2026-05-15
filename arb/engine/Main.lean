@@ -715,6 +715,7 @@ def step (req : StepRequest) : Except String ArbitrationState := do
       requireRole req.action.actor_role role
       let text := trimString (← getString req.action.payload "text")
       requireTextWithinLimit "closing statement" text req.state.policy.max_closing_chars
+      requireNoSupplementalMaterials req.action.payload
       pure <| stateWithCase req.state (addFiling c "closings" role text)
   | "pass_phase_opportunity" =>
       if c.phase = "rebuttals" then

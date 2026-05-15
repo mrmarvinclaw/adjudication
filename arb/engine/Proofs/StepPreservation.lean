@@ -149,7 +149,8 @@ A successful closing-statement step has the expected result state.
 
 This is the closing-phase analogue of the opening result theorem above.  The
 engine must still be in closings, the acting side must be the one currently
-entitled to close, and the text must satisfy the closing limit.
+entitled to close, the text must satisfy the closing limit, and the closing
+payload must not contain supplemental evidence fields.
 -/
 theorem step_deliver_closing_statement_result
     (s t : ArbitrationState)
@@ -175,6 +176,7 @@ theorem step_deliver_closing_statement_result
         let rawText ← getString action.payload "text"
         let text := trimString rawText
         requireTextWithinLimit "closing statement" text s.policy.max_closing_chars
+        requireNoSupplementalMaterials action.payload
         pure <| stateWithCase s
           (addFiling s.case "closings"
             (if s.case.closings.isEmpty then "plaintiff" else "defendant") text)) = .ok t := by
@@ -197,6 +199,7 @@ theorem step_deliver_closing_statement_result
               (do
                 let text := trimString rawText
                 requireTextWithinLimit "closing statement" text s.policy.max_closing_chars
+                requireNoSupplementalMaterials action.payload
                 pure <| stateWithCase s
                   (addFiling s.case "closings"
                     (if s.case.closings.isEmpty then "plaintiff" else "defendant") text)) = .ok t := by
@@ -204,17 +207,36 @@ theorem step_deliver_closing_statement_result
           cases hTextCheck :
               requireTextWithinLimit "closing statement" (trimString rawText) s.policy.max_closing_chars with
           | error err =>
-              have hImpossible := hStep''
-              simp [hTextCheck, Functor.map, Except.map] at hImpossible
+              dsimp at hStep''
+              rw [hTextCheck] at hStep''
+              cases hStep''
           | ok okv =>
               cases okv
-              have hDone :
-                  stateWithCase s
-                    (addFiling s.case "closings"
-                      (if s.case.closings.isEmpty then "plaintiff" else "defendant")
-                      (trimString rawText)) = t := by
-                simpa [hTextCheck, Functor.map, Except.map] using hStep''
-              exact ⟨rawText, hDone.symm⟩
+              cases hNoSupplemental : requireNoSupplementalMaterials action.payload with
+              | error err =>
+                  dsimp at hStep''
+                  rw [hTextCheck] at hStep''
+                  rw [hNoSupplemental] at hStep''
+                  cases hStep''
+              | ok okv =>
+                  cases okv
+                  have hDone :
+                      stateWithCase s
+                        (addFiling s.case "closings"
+                          (if s.case.closings.isEmpty then "plaintiff" else "defendant")
+                          (trimString rawText)) = t := by
+                    dsimp at hStep''
+                    rw [hTextCheck] at hStep''
+                    rw [hNoSupplemental] at hStep''
+                    change
+                      (Except.ok
+                        (stateWithCase s
+                          (addFiling s.case "closings"
+                            (if s.case.closings.isEmpty then "plaintiff" else "defendant")
+                            (trimString rawText))) : Except String ArbitrationState) = .ok t at hStep''
+                    cases hStep''
+                    rfl
+                  exact ⟨rawText, hDone.symm⟩
 
 /--
 A successful closing-statement step preserves the global filing shape.

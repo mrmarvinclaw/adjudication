@@ -263,6 +263,31 @@ func TestValidateAttorneyPayloadRejectsSupplementalMaterialsInSurrebuttal(t *tes
 	}
 }
 
+func TestValidateAttorneyPayloadRejectsSupplementalMaterialsInClosing(t *testing.T) {
+	policy := DefaultPolicy()
+	fileByID := map[string]CaseFile{
+		"instructions.txt": {FileID: "instructions.txt", SizeBytes: 128},
+	}
+	closing := map[string]any{
+		"text": "closing",
+		"offered_files": []any{
+			map[string]any{"file_id": "instructions.txt"},
+		},
+	}
+	if err := validateAttorneyPayload("deliver_closing_statement", closing, fileByID, policy); err == nil {
+		t.Fatalf("expected closing offered_files to be rejected")
+	}
+	closing = map[string]any{
+		"text": "closing",
+		"technical_reports": []any{
+			map[string]any{"title": "Late report", "summary": "New analysis."},
+		},
+	}
+	if err := validateAttorneyPayload("deliver_closing_statement", closing, fileByID, policy); err == nil {
+		t.Fatalf("expected closing technical_reports to be rejected")
+	}
+}
+
 func TestValidateAttorneyPayloadRejectsOversizeExhibit(t *testing.T) {
 	policy := DefaultPolicy()
 	policy.MaxExhibitBytes = 16

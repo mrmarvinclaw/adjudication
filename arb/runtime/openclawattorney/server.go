@@ -64,11 +64,19 @@ type rpcError struct {
 }
 
 type lawyerJob struct {
-	SessionID       string         `json:"session_id"`
-	Prompt          string         `json:"prompt"`
-	Case            map[string]any `json:"case,omitempty"`
-	CaseFiles       []caseTextFile `json:"case_files,omitempty"`
-	RejectedFilings []string       `json:"rejected_filings,omitempty"`
+	SessionID        string                       `json:"session_id"`
+	Prompt           string                       `json:"prompt"`
+	Case             map[string]any               `json:"case,omitempty"`
+	CaseFiles        []caseTextFile               `json:"case_files,omitempty"`
+	RejectedFilings  []string                     `json:"rejected_filings,omitempty"`
+	AcceptedEvidence []acceptedEvidenceSubmission `json:"accepted_evidence,omitempty"`
+}
+
+type acceptedEvidenceSubmission struct {
+	FileID       string `json:"file_id"`
+	Title        string `json:"title,omitempty"`
+	OfferLabel   string `json:"offer_label,omitempty"`
+	SubmittedNow bool   `json:"submitted_now,omitempty"`
 }
 
 type caseTextFile struct {
@@ -256,9 +264,18 @@ func (s *Server) handlePrompt(ctx context.Context, params map[string]any) error 
 	job := lawyerJob{SessionID: sessionID, Prompt: prompt, Case: caseView, CaseFiles: caseFiles}
 	var submitErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		decision, err := s.obtainDecision(ctx, job)
+		response, err := s.obtainDecision(ctx, job)
 		if err != nil {
 			return err
+		}
+		decision, accepted, err := s.prepareDecision(ctx, response)
+		if len(accepted) > 0 {
+			job.AcceptedEvidence = append(job.AcceptedEvidence, accepted...)
+		}
+		if err != nil {
+			submitErr = err
+			job.RejectedFilings = append(job.RejectedFilings, submitErr.Error())
+			continue
 		}
 		if _, err := s.clientRequest(ctx, "_aar/submit_decision", decision); err != nil {
 			submitErr = fmt.Errorf("submit AAR decision: %w", err)
@@ -413,7 +430,24 @@ func buildOpenClawAgentPrompt(job lawyerJob, extra string) (string, error) {
 		b.WriteString(strings.TrimSpace(extra))
 		b.WriteString("\n\n")
 	}
-	b.WriteString("Return exactly one JSON object suitable for aar_submit_decision. Do not include prose, markdown, or a code fence. The object must include kind. If kind is tool, include tool_name and payload.\n\n")
+	b.WriteString("Return exactly one JSON object. Do not include prose, markdown, or a code fence.\n")
+	b.WriteString("You may return either an ordinary aar_submit_decision object, or a structured bundle with evidence_submissions and decision.\n")
+	b.WriteString("Use the structured bundle when you found source material outside the record that should become evidence. Each evidence_submissions item may include title, source_url, source_description, retrieval_timestamp, mime_type, relevance, content or content_base64, preferred_filename_ext, offer_label, and offer_as_exhibit. The adapter submits those items with aar_submit_evidence before filing the decision. If offer_as_exhibit is omitted, accepted evidence is cited in offered_files for arguments and rebuttals. Do not include evidence_submissions in closings.\n")
+	b.WriteString("Ordinary decision form: {\"kind\":\"tool\",\"tool_name\":\"submit_argument\",\"payload\":{...}}. Structured bundle form: {\"evidence_submissions\":[{...}],\"decision\":{\"kind\":\"tool\",\"tool_name\":\"submit_argument\",\"payload\":{...}}}.\n\n")
+	if len(job.AcceptedEvidence) > 0 {
+		b.WriteString("Evidence already accepted during this opportunity. Do not resubmit these items; cite the file_id values in offered_files if needed:\n")
+		for i, item := range job.AcceptedEvidence {
+			b.WriteString(strconv.Itoa(i + 1))
+			b.WriteString(". ")
+			b.WriteString(item.FileID)
+			if item.Title != "" {
+				b.WriteString(" — ")
+				b.WriteString(item.Title)
+			}
+			b.WriteByte('\n')
+		}
+		b.WriteString("\n")
+	}
 	if len(job.RejectedFilings) > 0 {
 		b.WriteString("Your previous filing for this same opportunity was rejected by AAR. Correct the filing and return a new JSON object. Rejections:\n")
 		for i, rejection := range job.RejectedFilings {
@@ -542,6 +576,118 @@ func (s *Server) writeJSON(v any) error {
 	return err
 }
 
+func (s *Server) prepareDecision(ctx context.Context, response map[string]any) (map[string]any, []acceptedEvidenceSubmission, error) {
+	decision := response
+	if nested := mapValue(response["decision"]); nested != nil {
+		decision = cloneMap(nested)
+	}
+	evidenceEntries := listOfMaps(response["evidence_submissions"])
+	if len(evidenceEntries) == 0 {
+		return decision, nil, nil
+	}
+	toolName := strings.TrimSpace(stringValue(decision["tool_name"]))
+	if toolName != "submit_argument" && toolName != "submit_rebuttal" {
+		return nil, nil, fmt.Errorf("evidence_submissions are allowed only with submit_argument or submit_rebuttal decisions")
+	}
+	accepted := make([]acceptedEvidenceSubmission, 0, len(evidenceEntries))
+	for i, entry := range evidenceEntries {
+		params := cloneMap(entry)
+		offerLabel := strings.TrimSpace(stringValue(params["offer_label"]))
+		offerAsExhibit := boolDefault(params["offer_as_exhibit"], true)
+		delete(params, "offer_label")
+		delete(params, "offer_as_exhibit")
+		result, err := s.clientRequest(ctx, "_aar/submit_evidence", params)
+		if err != nil {
+			return nil, accepted, fmt.Errorf("submit AAR evidence %d: %w", i+1, err)
+		}
+		fileID := strings.TrimSpace(stringValue(result["file_id"]))
+		if fileID == "" {
+			if evidence := mapValue(result["evidence"]); evidence != nil {
+				fileID = strings.TrimSpace(stringValue(evidence["file_id"]))
+			}
+		}
+		if fileID == "" {
+			return nil, accepted, fmt.Errorf("submit AAR evidence %d returned no file_id", i+1)
+		}
+		if offerLabel == "" {
+			offerLabel = strings.TrimSpace(stringValue(params["title"]))
+		}
+		if offerLabel == "" {
+			offerLabel = fileID
+		}
+		accepted = append(accepted, acceptedEvidenceSubmission{
+			FileID:       fileID,
+			Title:        strings.TrimSpace(stringValue(params["title"])),
+			OfferLabel:   offerLabel,
+			SubmittedNow: true,
+		})
+		if offerAsExhibit {
+			appendOfferedFile(decision, fileID, offerLabel)
+		}
+	}
+	return decision, accepted, nil
+}
+
+func appendOfferedFile(decision map[string]any, fileID string, label string) {
+	payload := mapValue(decision["payload"])
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	offered := listOfMaps(payload["offered_files"])
+	for _, item := range offered {
+		if strings.TrimSpace(stringValue(item["file_id"])) == fileID {
+			decision["payload"] = payload
+			return
+		}
+	}
+	offered = append(offered, map[string]any{"file_id": fileID, "label": label})
+	payload["offered_files"] = offered
+	decision["payload"] = payload
+}
+
+func mapValue(value any) map[string]any {
+	m, _ := value.(map[string]any)
+	return m
+}
+
+func cloneMap(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func listOfMaps(value any) []map[string]any {
+	switch v := value.(type) {
+	case []map[string]any:
+		out := make([]map[string]any, len(v))
+		copy(out, v)
+		return out
+	case []any:
+		out := make([]map[string]any, 0, len(v))
+		for _, raw := range v {
+			if entry, ok := raw.(map[string]any); ok && entry != nil {
+				out = append(out, cloneMap(entry))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func boolDefault(value any, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	b, ok := value.(bool)
+	if !ok {
+		return fallback
+	}
+	return b
+}
+
 func parseDecisionJSON(raw []byte) (map[string]any, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
@@ -559,11 +705,17 @@ func parseDecisionJSON(raw []byte) (map[string]any, error) {
 			lastErr = err
 			continue
 		}
-		if strings.TrimSpace(stringValue(out["kind"])) == "" {
-			lastErr = fmt.Errorf("decision JSON missing kind")
-			continue
+		if strings.TrimSpace(stringValue(out["kind"])) != "" {
+			return out, nil
 		}
-		return out, nil
+		if decision := mapValue(out["decision"]); decision != nil {
+			if strings.TrimSpace(stringValue(decision["kind"])) == "" {
+				lastErr = fmt.Errorf("structured decision JSON missing decision.kind")
+				continue
+			}
+			return out, nil
+		}
+		lastErr = fmt.Errorf("decision JSON missing kind or decision")
 	}
 	return nil, lastErr
 }
