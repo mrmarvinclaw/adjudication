@@ -52,24 +52,28 @@ type AttorneyRunInfo struct {
 }
 
 type Config struct {
-	RunID                    string
-	ComplaintPath            string
-	CaseFilePaths            []string
-	OutputDir                string
-	CommonRoot               string
-	CouncilPoolPath          string
-	AttorneyModel            string
-	AttorneyInstructionsPath string
-	PlaintiffAttorney        AttorneyRoleConfig
-	DefendantAttorney        AttorneyRoleConfig
-	Policy                   Policy
-	Runtime                  RuntimeLimits
-	XProxyConfigPath         string
-	XProxyPort               int
-	ACPCommand               string
-	ACPArgs                  []string
-	ACPEnv                   []string
-	Engine                   lean.Engine
+	RunID                      string
+	ComplaintPath              string
+	CaseFilePaths              []string
+	OutputDir                  string
+	CommonRoot                 string
+	CouncilPoolPath            string
+	AttorneyModel              string
+	AttorneyInstructionsPath   string
+	PromptDir                  string
+	AttorneyCommonPromptPath   string
+	AttorneyArgumentPromptPath string
+	AttorneyRebuttalPromptPath string
+	PlaintiffAttorney          AttorneyRoleConfig
+	DefendantAttorney          AttorneyRoleConfig
+	Policy                     Policy
+	Runtime                    RuntimeLimits
+	XProxyConfigPath           string
+	XProxyPort                 int
+	ACPCommand                 string
+	ACPArgs                    []string
+	ACPEnv                     []string
+	Engine                     lean.Engine
 }
 
 type Result struct {

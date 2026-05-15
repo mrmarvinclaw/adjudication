@@ -864,7 +864,7 @@ func (rc *runContext) buildAttorneyPrompt(opportunity Opportunity) (string, erro
 	if err != nil {
 		return "", err
 	}
-	common, err := renderPromptFile("attorney-common.md", map[string]string{
+	common, err := rc.cfg.renderPromptFile("attorney-common.md", map[string]string{
 		"ROLE":                       opportunity.Role,
 		"PHASE":                      opportunity.Phase,
 		"OBJECTIVE":                  opportunity.Objective,
@@ -886,7 +886,7 @@ func (rc *runContext) buildAttorneyPrompt(opportunity Opportunity) (string, erro
 	if err != nil {
 		return "", err
 	}
-	phaseText, err := renderPromptFile(phaseFile, nil)
+	phaseText, err := rc.cfg.renderPromptFile(phaseFile, nil)
 	if err != nil {
 		return "", err
 	}

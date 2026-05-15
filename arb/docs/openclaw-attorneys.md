@@ -26,6 +26,20 @@ For OpenClaw attorneys:
 
 This matters for reproducibility. A closed-record run is reproduced by using an OpenClaw attorney agent that does not search or by instructing it to stay within the provided record. An open-record run is reproduced by using an OpenClaw attorney agent with search/browser/fetch tools available and by giving explicit open-record instructions through `AAR_OPENCLAW_AGENT_EXTRA_PROMPT`.
 
+## Prompt overrides
+
+`aar case` loads attorney prompts from `./prompts` by default. Use `--prompt-dir DIR` to override matching prompt files from another directory. Missing files fall back to `./prompts`.
+
+Use per-file overrides for targeted experiments:
+
+- `--attorney-common-prompt FILE`
+- `--attorney-arguments-prompt FILE`
+- `--attorney-rebuttals-prompt FILE`
+
+Per-file overrides take precedence over `--prompt-dir`.
+
+The repository includes `prompts/evidence-rich-30m` for open-record, fact-intensive cases with longer attorney budgets. Use it with matching AAR and OpenClaw-attorney time limits, such as `--acp-timeout-seconds 1800` and `AAR_OPENCLAW_ATTORNEY_TIMEOUT_SECONDS=1800`.
+
 ## Prerequisites
 
 From `arb/`:

@@ -158,6 +158,8 @@ The helper also accepts `--host`, `--port`, and `--adapter`.  It is intended for
 | `--evidence-standard` | Override `policy.evidence_standard`. |
 | `--council-pool` | Council model and persona pool.  Defaults to `../common/data/personas/pool.csv` when `arb/` is the working directory. |
 | `--attorney-instructions` | Standing attorney-side instructions file.  Defaults to `./attorney-instructions/default.md` when present. |
+| `--prompt-dir` | Prompt directory override. Files in this directory override matching files from `./prompts`; missing files fall back to `./prompts`. For longer open-record evidence runs, see `prompts/evidence-rich-30m`. |
+| `--attorney-common-prompt`, `--attorney-arguments-prompt`, `--attorney-rebuttals-prompt` | Per-file attorney prompt overrides. These take precedence over `--prompt-dir`. |
 | `--attorney-model` | Local Pi/xproxy attorney model id, including any search capability request, such as `openai://gpt-5` or `openai://gpt-5?tools=search`.  This does not apply to roles using `--*-acp-endpoint`. |
 | `--acp-command` | Shared local ACP command for both attorneys.  Defaults to `<common-root>/pi-container/acp-podman.sh`. |
 | `--plaintiff-attorney-model`, `--defendant-attorney-model` | Role-specific local Pi/xproxy attorney model overrides.  Invalid with the same role's `--*-acp-endpoint`. |
