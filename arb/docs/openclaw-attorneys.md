@@ -104,7 +104,7 @@ Terminal 1, start the bridge with an open-record instruction:
 cd arb
 export AAR_OPENCLAW_AGENT_ID=aar-lawyer
 export AAR_OPENCLAW_ATTORNEY_TIMEOUT_SECONDS=1200
-export AAR_OPENCLAW_AGENT_EXTRA_PROMPT='This is an open-record arbitration. Use available public search, web fetch, browser, transcript, or equivalent tools when they can materially improve the filing. Prefer primary sources over commentary. Preserve URLs, direct excerpts, and uncertainty. If external material matters, include it in technical_reports with enough provenance for later packet backfill. Do not cite external material in offered_files unless AAR exposed it as a case file.'
+export AAR_OPENCLAW_AGENT_EXTRA_PROMPT='This is an open-record arbitration. Use available public search, web fetch, browser, transcript, or equivalent tools when they can materially improve the filing. Prefer primary sources over commentary. Preserve URLs, direct excerpts, and uncertainty. If external source material matters, submit the source content and provenance through aar_submit_evidence and cite the returned file_id in offered_files. Use technical_reports for attorney analysis or synthesized work product.'
 
 tools/openclaw-acp-tcp-bridge.js --host 127.0.0.1 --port 19702
 ```
@@ -160,10 +160,10 @@ Check these before reporting the result:
 jq '.status? // empty' "$out_dir/run.json" 2>/dev/null || true
 jq '.result? // empty' "$out_dir/run.json" 2>/dev/null || true
 grep -n "Resolution:" "$out_dir/digest.md"
-grep -n "technical report\|technical_reports\|http" "$out_dir/digest.md" | head -40
+grep -n "Submitted Evidence\|technical report\|technical_reports\|http" "$out_dir/digest.md" | head -40
 ```
 
-For an open-record run, the important question is not only the vote split. Inspect whether the attorneys obtained the decisive public evidence, preserved enough provenance, and distinguished primary evidence from secondary reporting. If the attorneys rely on external evidence that is not in the case packet, backfill the case directory before using later closed-record runs as reproducibility evidence.
+For an open-record run, the important question is not only the vote split. Inspect whether the attorneys obtained the decisive public evidence, preserved enough provenance, and distinguished primary evidence from secondary reporting. Source material submitted with `aar_submit_evidence` is copied into `submitted-evidence/`, recorded in `state.json`, and becomes a visible case file that later filings can cite in `offered_files`. If attorneys instead rely on unsupported claims in prose or technical reports, backfill the case directory before using later closed-record runs as reproducibility evidence.
 
 ## Clavicular runs used during development
 
@@ -191,7 +191,6 @@ The open-record run completed successfully and produced `not_demonstrated`, 0 de
 ## Current limitations
 
 - The adapter asks OpenClaw for one strict JSON filing per AAR opportunity. It does not stream intermediate reasoning back to AAR.
-- The adapter can submit filings through `_aar/submit_decision` and can read text case files. It does not create durable new case files from external evidence.
-- External findings currently enter through `technical_reports`, which are attorney work product. They do not become preserved evidence with new `file_id` values.
-- A first-class evidence-submission path would need AAR methods such as `_aar/submit_evidence` or `_aar/submit_case_file`, validation, storage, hashing, and a returned `file_id` that later filings can cite in `offered_files`.
+- Attorneys can submit source evidence during arguments and rebuttals through `_aar/submit_evidence`. AAR stores the bytes under `submitted-evidence/`, hashes them with SHA-256, records provenance metadata, adds the new file to the visible case-file set, and returns a `file_id` for later citation in `offered_files`.
+- `technical_reports` remain attorney work product. Use them for analysis, not for preserving exact source material when the source content matters.
 - AAR endpoint metadata deliberately does not claim OpenClaw search capability. The operator must configure and document the OpenClaw agent environment used for open-record runs.
