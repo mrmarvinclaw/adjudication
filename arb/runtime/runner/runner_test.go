@@ -13,6 +13,7 @@ import (
 
 	"adjudication/arb/runtime/lean"
 	"adjudication/arb/runtime/spec"
+	openaiapi "adjudication/common/openai"
 )
 
 func TestLoadCaseFiles(t *testing.T) {
@@ -1170,6 +1171,59 @@ func TestIsCouncilRequestError(t *testing.T) {
 	}
 }
 
+func TestExecuteCouncilOpportunityRetriesAfterOversizeResponse(t *testing.T) {
+	origPromptBaseDir := promptBaseDir
+	promptBaseDir = filepath.Join("..", "..", "prompts")
+	defer func() { promptBaseDir = origPromptBaseDir }()
+
+	rc := newCouncilOpportunityTestContext(t, "")
+	client := &fakeCouncilResponseClient{
+		responses: []openaiapi.Response{
+			{Text: strings.Repeat("x", 4096), ResponseID: "oversize"},
+			{ToolCalls: []openaiapi.ToolCall{{Name: "submit_council_vote", Arguments: map[string]any{"vote": "demonstrated", "rationale": "record sufficient"}}}, ResponseID: "valid"},
+		},
+	}
+	if err := rc.executeCouncilOpportunity(context.Background(), client, Opportunity{ID: "deliberation:1:C1", Role: "council", Phase: "deliberation"}); err != nil {
+		t.Fatalf("executeCouncilOpportunity returned error: %v", err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("client calls = %d, want 2", client.calls)
+	}
+	if !strings.Contains(client.inputs[1][len(client.inputs[1])-1]["content"].(string), "response payload") {
+		t.Fatalf("second prompt did not include oversize correction: %#v", client.inputs[1])
+	}
+	caseObj := mapAny(rc.state["case"])
+	votes := mapList(caseObj["council_votes"])
+	if len(votes) != 1 || mapString(votes[0]["vote"]) != "demonstrated" {
+		t.Fatalf("votes = %#v, want one demonstrated vote", votes)
+	}
+}
+
+func TestExecuteCouncilOpportunityDismissesAfterRepeatedOversizeResponses(t *testing.T) {
+	origPromptBaseDir := promptBaseDir
+	promptBaseDir = filepath.Join("..", "..", "prompts")
+	defer func() { promptBaseDir = origPromptBaseDir }()
+
+	rc := newCouncilOpportunityTestContext(t, "invalid_response")
+	rc.cfg.Runtime.InvalidAttemptLimit = 2
+	client := &fakeCouncilResponseClient{
+		responses: []openaiapi.Response{
+			{Text: strings.Repeat("x", 4096), ResponseID: "oversize-1"},
+			{Text: strings.Repeat("y", 4096), ResponseID: "oversize-2"},
+		},
+	}
+	if err := rc.executeCouncilOpportunity(context.Background(), client, Opportunity{ID: "deliberation:1:C1", Role: "council", Phase: "deliberation"}); err != nil {
+		t.Fatalf("executeCouncilOpportunity returned error: %v", err)
+	}
+	if client.calls != 2 {
+		t.Fatalf("client calls = %d, want 2", client.calls)
+	}
+	assertRemovedCouncilMember(t, rc, "invalid_response")
+	if got := mapString(rc.events[0].Payload["cause"]); !strings.Contains(got, "exceeded invalid-attempt limit") || !strings.Contains(got, "byte limit") {
+		t.Fatalf("cause = %q, want invalid-attempt byte-limit cause", got)
+	}
+}
+
 func TestRemoveTimedOutCouncilMemberRecordsEvent(t *testing.T) {
 	t.Parallel()
 
@@ -1197,12 +1251,74 @@ func TestRemoveRequestFailedCouncilMemberRecordsEvent(t *testing.T) {
 	}
 }
 
+type fakeCouncilResponseClient struct {
+	responses []openaiapi.Response
+	errs      []error
+	inputs    [][]map[string]any
+	calls     int
+}
+
+func (c *fakeCouncilResponseClient) CreateResponseWithMaxOutputTokens(_ context.Context, _ string, inputItems []map[string]any, _ []map[string]any, _ string, _ *float64, _ *int64) (openaiapi.Response, error) {
+	c.inputs = append(c.inputs, append([]map[string]any(nil), inputItems...))
+	call := c.calls
+	c.calls++
+	if call < len(c.errs) && c.errs[call] != nil {
+		return openaiapi.Response{}, c.errs[call]
+	}
+	if call < len(c.responses) {
+		return c.responses[call], nil
+	}
+	return openaiapi.Response{}, fmt.Errorf("unexpected fake council client call %d", call+1)
+}
+
+func newCouncilOpportunityTestContext(t *testing.T, removalStatus string) *runContext {
+	t.Helper()
+
+	dir := t.TempDir()
+	enginePath := filepath.Join(dir, "engine.sh")
+	script := councilEngineScript(removalStatus)
+	if err := os.WriteFile(enginePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write engine script: %v", err)
+	}
+	runtimeLimits := DefaultRuntimeLimits()
+	runtimeLimits.MaxResponseBytes = 2048
+	runtimeLimits.InvalidAttemptLimit = 3
+	return &runContext{
+		cfg: Config{
+			Engine:    lean.Engine{Command: []string{enginePath}},
+			OutputDir: dir,
+			Policy:    DefaultPolicy(),
+			Runtime:   runtimeLimits,
+		},
+		complaint: spec.Complaint{Proposition: "P"},
+		state: map[string]any{
+			"policy": DefaultPolicy().StateMap(),
+			"case": map[string]any{
+				"phase":              "deliberation",
+				"deliberation_round": 1,
+				"openings":           []map[string]any{},
+				"arguments":          []map[string]any{},
+				"rebuttals":          []map[string]any{},
+				"surrebuttals":       []map[string]any{},
+				"closings":           []map[string]any{},
+				"offered_files":      []map[string]any{},
+				"technical_reports":  []map[string]any{},
+				"submitted_evidence": []map[string]any{},
+				"council_votes":      []map[string]any{},
+				"council_members":    []map[string]any{{"member_id": "C1", "status": "seated"}},
+				"resolution":         "",
+			},
+		},
+		council: []CouncilSeat{{MemberID: "C1", Model: "openrouter://openai/gpt-4o", PersonaText: "Concise."}},
+	}
+}
+
 func newCouncilRemovalTestContext(t *testing.T, status string) *runContext {
 	t.Helper()
 
 	dir := t.TempDir()
 	enginePath := filepath.Join(dir, "engine.sh")
-	script := fmt.Sprintf("#!/bin/sh\ncat >/dev/null\nprintf '%%s\\n' '{\"ok\":true,\"state\":{\"case\":{\"phase\":\"deliberation\",\"resolution\":\"\",\"council_members\":[{\"member_id\":\"C1\",\"status\":\"%s\"}]}}}'\n", status)
+	script := councilEngineScript(status)
 	if err := os.WriteFile(enginePath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write engine script: %v", err)
 	}
@@ -1217,6 +1333,18 @@ func newCouncilRemovalTestContext(t *testing.T, status string) *runContext {
 			},
 		},
 	}
+}
+
+func councilEngineScript(removalStatus string) string {
+	removalState := fmt.Sprintf(`{"ok":true,"state":{"case":{"phase":"deliberation","resolution":"","council_members":[{"member_id":"C1","status":"%s"}]}}}`, removalStatus)
+	voteState := `{"ok":true,"state":{"case":{"phase":"deliberation","resolution":"","council_members":[{"member_id":"C1","status":"seated"}],"council_votes":[{"round":1,"member_id":"C1","vote":"demonstrated","rationale":"record sufficient"}]}}}`
+	return fmt.Sprintf(`#!/bin/sh
+request=$(cat)
+case "$request" in
+  *remove_council_member*) printf '%%s\n' '%s' ;;
+  *) printf '%%s\n' '%s' ;;
+esac
+`, removalState, voteState)
 }
 
 func assertRemovedCouncilMember(t *testing.T, rc *runContext, status string) {

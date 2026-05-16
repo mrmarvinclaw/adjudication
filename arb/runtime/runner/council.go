@@ -80,7 +80,12 @@ func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client coun
 		if size, err := jsonPayloadSize(resp); err != nil {
 			return err
 		} else if size > rc.cfg.Runtime.MaxResponseBytes {
-			return fmt.Errorf("council response exceeded byte limit of %d", rc.cfg.Runtime.MaxResponseBytes)
+			recordInvalidAttempt(councilResponseOversizeReason(size, rc.cfg.Runtime.MaxResponseBytes))
+			inputItems = append(inputItems, map[string]any{
+				"role":    "user",
+				"content": councilResponseOversizeCorrection(size, rc.cfg.Runtime.MaxResponseBytes),
+			})
+			continue
 		}
 		prevID = resp.ResponseID
 		if len(resp.ToolCalls) != 1 {
@@ -130,7 +135,11 @@ func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client coun
 			"payload":   payload,
 		})
 	}
-	return formatInvalidAttemptLimitError(fmt.Sprintf("council member %s", memberID), invalidAttemptReasons)
+	limitErr := formatInvalidAttemptLimitError(fmt.Sprintf("council member %s", memberID), invalidAttemptReasons)
+	if lastInvalidAttemptWasOversize(invalidAttemptReasons) {
+		return rc.removeInvalidResponseCouncilMember(opportunity, seat, limitErr)
+	}
+	return limitErr
 }
 
 func (rc *runContext) removeTimedOutCouncilMember(opportunity Opportunity, seat CouncilSeat, cause error) error {
@@ -139,6 +148,10 @@ func (rc *runContext) removeTimedOutCouncilMember(opportunity Opportunity, seat 
 
 func (rc *runContext) removeRequestFailedCouncilMember(opportunity Opportunity, seat CouncilSeat, cause error) error {
 	return rc.removeCouncilMember(opportunity, seat, "request_failed", cause)
+}
+
+func (rc *runContext) removeInvalidResponseCouncilMember(opportunity Opportunity, seat CouncilSeat, cause error) error {
+	return rc.removeCouncilMember(opportunity, seat, "invalid_response", cause)
 }
 
 func (rc *runContext) removeCouncilMember(opportunity Opportunity, seat CouncilSeat, status string, cause error) error {
@@ -219,6 +232,21 @@ func isCouncilRequestError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "responses request failed:") || strings.Contains(msg, "responses failed after retries:")
+}
+
+func councilResponseOversizeReason(size int, limit int) string {
+	return fmt.Sprintf("council response exceeded byte limit of %d bytes (got %d)", limit, size)
+}
+
+func councilResponseOversizeCorrection(size int, limit int) string {
+	return fmt.Sprintf("Your response payload was %d bytes; the limit is %d bytes. Call submit_council_vote exactly once with only vote and a concise rationale. Do not include analysis outside the tool call.", size, limit)
+}
+
+func lastInvalidAttemptWasOversize(reasons []string) bool {
+	if len(reasons) == 0 {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(reasons[len(reasons)-1]), "council response exceeded byte limit")
 }
 
 func (rc *runContext) renderCouncilRecord() string {
