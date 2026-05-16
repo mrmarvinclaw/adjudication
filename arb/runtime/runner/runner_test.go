@@ -1153,16 +1153,60 @@ func TestIsCouncilTimeoutError(t *testing.T) {
 	}
 }
 
+func TestIsCouncilRequestError(t *testing.T) {
+	t.Parallel()
+
+	if isCouncilRequestError(fmt.Errorf("parse function arguments for submit_council_vote: bad json")) {
+		t.Fatalf("unexpected request-error match for tool argument parse error")
+	}
+	if isCouncilRequestError(context.Canceled) {
+		t.Fatalf("unexpected request-error match for context cancellation")
+	}
+	if !isCouncilRequestError(fmt.Errorf("responses request failed: 404 model not found")) {
+		t.Fatalf("expected responses request failure to count as request error")
+	}
+	if !isCouncilRequestError(fmt.Errorf("responses failed after retries: 503 unavailable")) {
+		t.Fatalf("expected exhausted responses retries to count as request error")
+	}
+}
+
 func TestRemoveTimedOutCouncilMemberRecordsEvent(t *testing.T) {
 	t.Parallel()
 
+	rc := newCouncilRemovalTestContext(t, "timed_out")
+	opportunity := Opportunity{Phase: "deliberation"}
+	seat := CouncilSeat{MemberID: "C1", Model: "openrouter://openai/gpt-4o"}
+	if err := rc.removeTimedOutCouncilMember(opportunity, seat, context.DeadlineExceeded); err != nil {
+		t.Fatalf("removeTimedOutCouncilMember returned error: %v", err)
+	}
+	assertRemovedCouncilMember(t, rc, "timed_out")
+}
+
+func TestRemoveRequestFailedCouncilMemberRecordsEvent(t *testing.T) {
+	t.Parallel()
+
+	rc := newCouncilRemovalTestContext(t, "request_failed")
+	opportunity := Opportunity{Phase: "deliberation"}
+	seat := CouncilSeat{MemberID: "C1", Model: "openrouter://anthropic/claude-3.7-sonnet"}
+	if err := rc.removeRequestFailedCouncilMember(opportunity, seat, fmt.Errorf("responses request failed: 404 model not found")); err != nil {
+		t.Fatalf("removeRequestFailedCouncilMember returned error: %v", err)
+	}
+	assertRemovedCouncilMember(t, rc, "request_failed")
+	if got := mapString(rc.events[0].Payload["cause"]); !strings.Contains(got, "404") {
+		t.Fatalf("cause = %q, want 404 marker", got)
+	}
+}
+
+func newCouncilRemovalTestContext(t *testing.T, status string) *runContext {
+	t.Helper()
+
 	dir := t.TempDir()
 	enginePath := filepath.Join(dir, "engine.sh")
-	script := "#!/bin/sh\ncat >/dev/null\nprintf '%s\\n' '{\"ok\":true,\"state\":{\"case\":{\"phase\":\"deliberation\",\"resolution\":\"\",\"council_members\":[{\"member_id\":\"C1\",\"status\":\"timed_out\"}]}}}'\n"
+	script := fmt.Sprintf("#!/bin/sh\ncat >/dev/null\nprintf '%%s\\n' '{\"ok\":true,\"state\":{\"case\":{\"phase\":\"deliberation\",\"resolution\":\"\",\"council_members\":[{\"member_id\":\"C1\",\"status\":\"%s\"}]}}}'\n", status)
 	if err := os.WriteFile(enginePath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write engine script: %v", err)
 	}
-	rc := &runContext{
+	return &runContext{
 		cfg: Config{
 			Engine:    lean.Engine{Command: []string{enginePath}},
 			OutputDir: dir,
@@ -1173,18 +1217,18 @@ func TestRemoveTimedOutCouncilMemberRecordsEvent(t *testing.T) {
 			},
 		},
 	}
-	opportunity := Opportunity{Phase: "deliberation"}
-	seat := CouncilSeat{MemberID: "C1", Model: "openrouter://openai/gpt-4o"}
-	if err := rc.removeTimedOutCouncilMember(opportunity, seat, context.DeadlineExceeded); err != nil {
-		t.Fatalf("removeTimedOutCouncilMember returned error: %v", err)
-	}
+}
+
+func assertRemovedCouncilMember(t *testing.T, rc *runContext, status string) {
+	t.Helper()
+
 	caseObj := mapAny(rc.state["case"])
 	members := mapList(caseObj["council_members"])
 	if len(members) != 1 {
 		t.Fatalf("council member count = %d, want 1", len(members))
 	}
-	if got := mapString(members[0]["status"]); got != "timed_out" {
-		t.Fatalf("member status = %q, want timed_out", got)
+	if got := mapString(members[0]["status"]); got != status {
+		t.Fatalf("member status = %q, want %s", got, status)
 	}
 	if len(rc.events) != 1 {
 		t.Fatalf("event count = %d, want 1", len(rc.events))
@@ -1196,7 +1240,7 @@ func TestRemoveTimedOutCouncilMemberRecordsEvent(t *testing.T) {
 	if got := mapString(event.Payload["member_id"]); got != "C1" {
 		t.Fatalf("member_id = %q, want C1", got)
 	}
-	if got := mapString(event.Payload["status"]); got != "timed_out" {
-		t.Fatalf("status = %q, want timed_out", got)
+	if got := mapString(event.Payload["status"]); got != status {
+		t.Fatalf("status = %q, want %s", got, status)
 	}
 }

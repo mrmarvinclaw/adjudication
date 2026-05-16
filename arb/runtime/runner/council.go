@@ -72,6 +72,9 @@ func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client coun
 			if isCouncilTimeoutError(err) {
 				return rc.removeTimedOutCouncilMember(opportunity, seat, err)
 			}
+			if isCouncilRequestError(err) {
+				return rc.removeRequestFailedCouncilMember(opportunity, seat, err)
+			}
 			return err
 		}
 		if size, err := jsonPayloadSize(resp); err != nil {
@@ -131,10 +134,18 @@ func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client coun
 }
 
 func (rc *runContext) removeTimedOutCouncilMember(opportunity Opportunity, seat CouncilSeat, cause error) error {
+	return rc.removeCouncilMember(opportunity, seat, "timed_out", cause)
+}
+
+func (rc *runContext) removeRequestFailedCouncilMember(opportunity Opportunity, seat CouncilSeat, cause error) error {
+	return rc.removeCouncilMember(opportunity, seat, "request_failed", cause)
+}
+
+func (rc *runContext) removeCouncilMember(opportunity Opportunity, seat CouncilSeat, status string, cause error) error {
 	memberID := seat.MemberID
 	stepResp, err := rc.cfg.Engine.Step(rc.state, "remove_council_member", "system", map[string]any{
 		"member_id": memberID,
-		"status":    "timed_out",
+		"status":    status,
 	})
 	if err != nil {
 		return err
@@ -146,7 +157,7 @@ func (rc *runContext) removeTimedOutCouncilMember(opportunity Opportunity, seat 
 	return rc.recordEvent("council_member_removed", "system", opportunity.Phase, map[string]any{
 		"member_id": memberID,
 		"model":     seat.Model,
-		"status":    "timed_out",
+		"status":    status,
 		"cause":     cause.Error(),
 	})
 }
@@ -200,6 +211,14 @@ func isCouncilTimeoutError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timeout") || strings.Contains(msg, "timed out")
+}
+
+func isCouncilRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "responses request failed:") || strings.Contains(msg, "responses failed after retries:")
 }
 
 func (rc *runContext) renderCouncilRecord() string {
