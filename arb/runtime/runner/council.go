@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"net"
 	"strings"
-
-	openaiapi "adjudication/common/openai"
 )
 
-func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client *openaiapi.Client, opportunity Opportunity) error {
+func (rc *runContext) executeCouncilOpportunity(ctx context.Context, client councilResponseClient, opportunity Opportunity) error {
 	memberID := councilMemberIDFromOpportunity(opportunity)
 	seat, ok := rc.findCouncilSeat(memberID)
 	if !ok {

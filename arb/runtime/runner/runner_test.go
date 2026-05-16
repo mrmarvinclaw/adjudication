@@ -225,6 +225,58 @@ func TestCouncilMemberIDFromOpportunity(t *testing.T) {
 	}
 }
 
+func TestPreflightCouncilCandidatesReplacesUnavailableSeat(t *testing.T) {
+	candidates := []CouncilSeat{
+		{Model: "bad-model", PersonaFile: "bad.md", PersonaText: "bad"},
+		{Model: "good-a", PersonaFile: "good-a.md", PersonaText: "good a"},
+		{Model: "good-b", PersonaFile: "good-b.md", PersonaText: "good b"},
+	}
+	checked := []string{}
+	seated, replacements, err := preflightCouncilCandidates(context.Background(), candidates, 2, func(_ context.Context, seat CouncilSeat) error {
+		checked = append(checked, seat.MemberID+":"+seat.Model)
+		if seat.Model == "bad-model" {
+			return fmt.Errorf("404 model unavailable")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("preflightCouncilCandidates returned error: %v", err)
+	}
+	wantChecked := []string{"C1:bad-model", "C1:good-a", "C2:good-b"}
+	if !slices.Equal(checked, wantChecked) {
+		t.Fatalf("checked = %#v, want %#v", checked, wantChecked)
+	}
+	if len(seated) != 2 {
+		t.Fatalf("seated %d council members, want 2", len(seated))
+	}
+	if seated[0].MemberID != "C1" || seated[0].Model != "good-a" {
+		t.Fatalf("first seated member = %#v, want C1 good-a", seated[0])
+	}
+	if seated[1].MemberID != "C2" || seated[1].Model != "good-b" {
+		t.Fatalf("second seated member = %#v, want C2 good-b", seated[1])
+	}
+	if len(replacements) != 1 {
+		t.Fatalf("replacements = %#v, want one replacement", replacements)
+	}
+	replacement := replacements[0]
+	if replacement.MemberID != "C1" || replacement.UnavailableModel != "bad-model" || replacement.ReplacementModel != "good-a" || !strings.Contains(replacement.Cause, "404") {
+		t.Fatalf("replacement = %#v", replacement)
+	}
+}
+
+func TestPreflightCouncilCandidatesFailsWhenAvailablePoolExhausted(t *testing.T) {
+	candidates := []CouncilSeat{
+		{Model: "bad-a", PersonaFile: "bad-a.md"},
+		{Model: "bad-b", PersonaFile: "bad-b.md"},
+	}
+	_, _, err := preflightCouncilCandidates(context.Background(), candidates, 1, func(_ context.Context, seat CouncilSeat) error {
+		return fmt.Errorf("%s unavailable", seat.Model)
+	})
+	if err == nil || !strings.Contains(err.Error(), "could not seat C1") {
+		t.Fatalf("preflightCouncilCandidates error = %v, want seating failure", err)
+	}
+}
+
 func TestValidateAttorneyPayloadAllowsSupplementalMaterialsInRebuttal(t *testing.T) {
 	policy := DefaultPolicy()
 	fileByID := map[string]CaseFile{
